@@ -1,0 +1,25 @@
+{
+  "name": "pictaflux",
+  "version": "0.1.0",
+  "description": "Real-time diffusion drawing — paint on the left, diffuse on the right",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@tauri-apps/cli": "^2.10.0",
+    "@tsconfig/svelte": "^5.0.7",
+    "svelte": "^5.50.0",
+    "svelte-check": "^4.3.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-shell": "^2.3.5"
+  }
+}
