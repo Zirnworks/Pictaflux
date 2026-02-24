@@ -34,6 +34,26 @@ pub async fn start_sidecar(
         }
     }
 
+    // Safety net: kill any orphaned process on the target port (e.g. from
+    // a previous crash or unclean shutdown).
+    let _ = tokio::process::Command::new("lsof")
+        .args(["-ti", &format!(":{}", port)])
+        .output()
+        .await
+        .map(|output| {
+            if let Ok(pids) = String::from_utf8(output.stdout) {
+                for pid in pids.lines() {
+                    if let Ok(pid) = pid.trim().parse::<u32>() {
+                        let _ = std::process::Command::new("kill")
+                            .args(["-9", &pid.to_string()])
+                            .output();
+                    }
+                }
+            }
+        });
+    // Brief pause so the OS can release the socket
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
     // Determine paths
     let sidecar_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -115,11 +135,18 @@ pub async fn start_sidecar(
 
 #[tauri::command]
 pub async fn stop_sidecar(state: State<'_, AppState>) -> Result<(), String> {
-    let mut sidecar = state.sidecar.lock().map_err(|e| e.to_string())?;
-    if let Some(mut child) = sidecar.child.take() {
-        let _ = child.start_kill();
+    // Take the child out of the mutex before awaiting kill, to avoid
+    // holding the lock across an await point.
+    let mut child = {
+        let mut sidecar = state.sidecar.lock().map_err(|e| e.to_string())?;
+        sidecar.status = SidecarStatus::Stopped;
+        sidecar.child.take()
+    };
+    if let Some(ref mut child) = child {
+        // kill() sends SIGKILL and waits for exit, ensuring the port is
+        // actually released before we return.
+        let _ = child.kill().await;
     }
-    sidecar.status = SidecarStatus::Stopped;
     Ok(())
 }
 

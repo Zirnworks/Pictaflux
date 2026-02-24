@@ -17,13 +17,14 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let app_state = window.state::<state::AppState>();
-                let lock_result = app_state.sidecar.lock();
-                if let Ok(mut sidecar) = lock_result {
-                    if let Some(ref mut child) = sidecar.child {
-                        let _ = child.start_kill();
-                    }
-                    sidecar.child = None;
+                let mut child_to_kill = None;
+                if let Ok(mut sidecar) = app_state.sidecar.lock() {
+                    child_to_kill = sidecar.child.take();
                     sidecar.status = state::SidecarStatus::Stopped;
+                };
+                if let Some(mut child) = child_to_kill {
+                    let _ = child.start_kill();
+                    let _ = child.try_wait();
                 }
             }
         })

@@ -34,25 +34,40 @@ import websockets
 
 
 pipeline = None
-# Original noise schedule values (stored after pipeline init)
-_orig_sqrt_a = None
-_orig_sqrt_1ma = None
+
+# Noise schedule for SDEdit-style img2img strength control.
+# Computed once after pipeline init; used by set_strength().
+_alphas_cumprod = None
+_max_timestep = 0
+
+
+def _compute_alphas_cumprod():
+    """Compute the standard stable diffusion noise schedule.
+
+    This is the same as diffusers' default: scaled_linear beta schedule
+    with beta_start=0.00085, beta_end=0.012, 1000 timesteps.
+    """
+    betas = np.linspace(0.00085 ** 0.5, 0.012 ** 0.5, 1000) ** 2
+    alphas = 1.0 - betas
+    return np.cumprod(alphas)
 
 
 def set_strength(strength):
     """Set img2img strength (0 = faithful to input, 1 = max creativity).
 
-    Interpolates the effective alpha between 1.0 (no noise) and the
-    original model alpha (full noise at trained timestep).
+    SDEdit approach: adjusts both the noise level and the UNet timestep
+    together so the model receives consistent inputs. Higher strength
+    means more noise and a higher timestep — more creative, less faithful.
     """
-    global _orig_sqrt_a, _orig_sqrt_1ma
-    if pipeline is None or _orig_sqrt_a is None:
+    if pipeline is None or _alphas_cumprod is None:
         return
-
-    orig_alpha = float(_orig_sqrt_a) ** 2
-    effective_alpha = (1.0 - strength) * 1.0 + strength * orig_alpha
-    pipeline._sqrt_a = np.float16(np.sqrt(effective_alpha))
-    pipeline._sqrt_1ma = np.float16(np.sqrt(1.0 - effective_alpha))
+    strength = max(0.0, min(1.0, float(strength)))
+    t = int(strength * _max_timestep)
+    t = max(0, min(t, len(_alphas_cumprod) - 1))
+    ap = float(_alphas_cumprod[t])
+    pipeline._sqrt_a = np.float16(np.sqrt(ap))
+    pipeline._sqrt_1ma = np.float16(np.sqrt(1.0 - ap))
+    pipeline._t_buf[0] = np.float16(t)
 
 
 async def handle_client(websocket):
@@ -107,7 +122,7 @@ async def handle_command(ws, cmd):
 
 
 async def main_async(args):
-    global pipeline, _orig_sqrt_a, _orig_sqrt_1ma
+    global pipeline, _alphas_cumprod, _max_timestep
 
     print("LOADING", flush=True)
 
@@ -130,11 +145,11 @@ async def main_async(args):
         ),
     )
 
-    # Store original noise schedule for strength interpolation
-    _orig_sqrt_a = float(pipeline._sqrt_a)
-    _orig_sqrt_1ma = float(pipeline._sqrt_1ma)
+    # Compute noise schedule and store the pipeline's original timestep
+    _alphas_cumprod = _compute_alphas_cumprod()
+    _max_timestep = int(pipeline._t_buf[0])
 
-    # Apply initial strength
+    # Apply initial strength (SDEdit: adjusts noise level + timestep)
     set_strength(args.strength)
 
     # Start WebSocket server
