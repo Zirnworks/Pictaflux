@@ -8,11 +8,13 @@ Protocol:
   - Text messages: JSON commands
     - {"type": "set_prompt", "prompt": "..."}
     - {"type": "set_feedback", "value": 0.3}
+    - {"type": "set_strength", "value": 0.5}
     - {"type": "ping"} -> {"type": "pong"}
 
 Lifecycle:
   - Prints "LOADING" to stdout when starting model load
   - Prints "READY:<port>" to stdout when WebSocket server is listening
+  - After READY, stdout is redirected to stderr (Rust closes the pipe)
   - Shuts down on SIGTERM, SIGINT, or all clients disconnect
 """
 import asyncio
@@ -32,6 +34,25 @@ import websockets
 
 
 pipeline = None
+# Original noise schedule values (stored after pipeline init)
+_orig_sqrt_a = None
+_orig_sqrt_1ma = None
+
+
+def set_strength(strength):
+    """Set img2img strength (0 = faithful to input, 1 = max creativity).
+
+    Interpolates the effective alpha between 1.0 (no noise) and the
+    original model alpha (full noise at trained timestep).
+    """
+    global _orig_sqrt_a, _orig_sqrt_1ma
+    if pipeline is None or _orig_sqrt_a is None:
+        return
+
+    orig_alpha = float(_orig_sqrt_a) ** 2
+    effective_alpha = (1.0 - strength) * 1.0 + strength * orig_alpha
+    pipeline._sqrt_a = np.float16(np.sqrt(effective_alpha))
+    pipeline._sqrt_1ma = np.float16(np.sqrt(1.0 - effective_alpha))
 
 
 async def handle_client(websocket):
@@ -79,12 +100,14 @@ async def handle_command(ws, cmd):
     elif t == "set_feedback":
         if pipeline is not None:
             pipeline.latent_feedback = float(cmd.get("value", 0.1))
+    elif t == "set_strength":
+        set_strength(float(cmd.get("value", 0.5)))
     elif t == "ping":
         await ws.send(json.dumps({"type": "pong"}))
 
 
 async def main_async(args):
-    global pipeline
+    global pipeline, _orig_sqrt_a, _orig_sqrt_1ma
 
     print("LOADING", flush=True)
 
@@ -107,6 +130,13 @@ async def main_async(args):
         ),
     )
 
+    # Store original noise schedule for strength interpolation
+    _orig_sqrt_a = float(pipeline._sqrt_a)
+    _orig_sqrt_1ma = float(pipeline._sqrt_1ma)
+
+    # Apply initial strength
+    set_strength(args.strength)
+
     # Start WebSocket server
     stop = asyncio.Event()
 
@@ -118,6 +148,12 @@ async def main_async(args):
 
     async with websockets.serve(handle_client, "127.0.0.1", args.port):
         print(f"READY:{args.port}", flush=True)
+
+        # Redirect stdout to stderr — Rust closes the stdout pipe after
+        # reading READY, so any future print() to stdout would crash with
+        # BrokenPipeError. Redirect so Pipeline internals are safe.
+        sys.stdout = sys.stderr
+
         await stop.wait()
 
 
@@ -132,6 +168,7 @@ def main():
     parser.add_argument("--model", type=str, default="sdxs")
     parser.add_argument("--render-size", type=int, default=512)
     parser.add_argument("--feedback", type=float, default=0.1)
+    parser.add_argument("--strength", type=float, default=0.5)
     parser.add_argument("--coreml-dir", type=str, default=None)
     args = parser.parse_args()
 

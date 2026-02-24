@@ -87,6 +87,12 @@ export class DiffusionBridge {
     }
   }
 
+  setStrength(value: number): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "set_strength", value }));
+    }
+  }
+
   private async sendNextFrame(): Promise<void> {
     if (!this.running || !this.canvasGetter || this.pendingFrame) return;
 

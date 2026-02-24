@@ -4,6 +4,7 @@
     brushColor = $bindable("#ffffff"),
     brushOpacity = $bindable(1.0),
     prompt = $bindable(""),
+    strength = $bindable(0.5),
     onclear,
     diffusionState = "disconnected",
     onToggleDiffusion,
@@ -12,6 +13,7 @@
     brushColor: string;
     brushOpacity: number;
     prompt: string;
+    strength: number;
     onclear?: () => void;
     diffusionState: string;
     onToggleDiffusion?: () => void;
@@ -50,6 +52,17 @@
         bind:value={prompt}
       />
     </label>
+  </div>
+
+  <div class="separator"></div>
+
+  <div class="tool-group">
+    <div class="tool-control">
+      <label title="img2img strength: low = faithful to drawing, high = more creative">Strength
+        <input type="range" min="0" max="1.0" step="0.05" bind:value={strength} />
+      </label>
+      <span class="value">{(strength * 100).toFixed(0)}%</span>
+    </div>
   </div>
 
   <div class="separator"></div>

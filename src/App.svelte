@@ -11,6 +11,7 @@
   let brushColor = $state("#ffffff");
   let brushOpacity = $state(1.0);
   let prompt = $state("oil painting style, masterpiece, highly detailed");
+  let strength = $state(0.5);
 
   let drawingCanvas: DrawingCanvas;
   let previewPane: PreviewPane;
@@ -44,7 +45,7 @@
     } else if (diffusionState === "disconnected" || diffusionState === "error") {
       diffusionState = "loading";
       try {
-        const result = await startSidecar(SIDECAR_PORT, prompt, 0.1);
+        const result = await startSidecar(SIDECAR_PORT, prompt, 0.1, strength);
         connectBridge(result.port);
       } catch (e) {
         console.error("Start error:", e);
@@ -84,6 +85,11 @@
     }, 300);
   });
 
+  // Immediate strength sync to pipeline
+  $effect(() => {
+    bridge?.setStrength(strength);
+  });
+
   onDestroy(() => {
     bridge?.disconnect();
   });
@@ -95,6 +101,7 @@
     bind:brushColor
     bind:brushOpacity
     bind:prompt
+    bind:strength
     onclear={handleClear}
     {diffusionState}
     onToggleDiffusion={handleToggleDiffusion}

@@ -23,6 +23,7 @@ pub async fn start_sidecar(
     port: u16,
     prompt: String,
     feedback: f32,
+    strength: f32,
     state: State<'_, AppState>,
 ) -> Result<SidecarStartResult, String> {
     // Check if already running
@@ -69,6 +70,8 @@ pub async fn start_sidecar(
         .arg(&prompt)
         .arg("--feedback")
         .arg(feedback.to_string())
+        .arg("--strength")
+        .arg(strength.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .kill_on_drop(true)

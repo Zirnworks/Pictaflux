@@ -20,11 +20,13 @@ export async function startSidecar(
   port: number,
   prompt: string,
   feedback: number,
+  strength: number = 0.5,
 ): Promise<SidecarStartResult> {
   return await invoke<SidecarStartResult>("start_sidecar", {
     port,
     prompt,
     feedback,
+    strength,
   });
 }
 
