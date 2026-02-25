@@ -105,6 +105,24 @@ export class DiffusionBridge {
     }
   }
 
+  setCfgScale(value: number): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "set_cfg_scale", value }));
+    }
+  }
+
+  setNegativePrompt(prompt: string): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "set_negative_prompt", prompt }));
+    }
+  }
+
+  setNumSteps(value: number): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "set_num_steps", value: Math.floor(value) }));
+    }
+  }
+
   private async sendNextFrame(): Promise<void> {
     if (!this.running || !this.canvasGetter || this.pendingFrame) return;
 

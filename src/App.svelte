@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import Toolbar from "./lib/components/Toolbar.svelte";
   import SplitPane from "./lib/components/SplitPane.svelte";
   import DrawingCanvas from "./lib/components/DrawingCanvas.svelte";
@@ -17,6 +17,9 @@
   let seed = $state(42);
   let model = $state("sdxs");
   let renderSize = $state(512);
+  let cfgScale = $state(1.0);
+  let negativePrompt = $state("");
+  let numSteps = $state(1);
 
   let drawingCanvas: DrawingCanvas;
   let previewPane: PreviewPane;
@@ -72,6 +75,9 @@
           // Sync runtime params not passed via CLI
           bridge?.setLerpSpeed(lerpSpeed);
           bridge?.setSeed(seed);
+          bridge?.setCfgScale(cfgScale);
+          bridge?.setNegativePrompt(negativePrompt);
+          bridge?.setNumSteps(numSteps);
         } else if (state === "disconnected" && diffusionState !== "loading")
           diffusionState = "disconnected";
         else if (state === "error") diffusionState = "error";
@@ -86,7 +92,10 @@
     bridge.connect();
   }
 
+  let _restarting = false;
   async function restartSidecar() {
+    if (_restarting) return;
+    _restarting = true;
     bridge?.disconnect();
     bridge = null;
     try {
@@ -104,6 +113,8 @@
     } catch (e) {
       console.error("Restart error:", e);
       diffusionState = "error";
+    } finally {
+      _restarting = false;
     }
   }
 
@@ -137,14 +148,37 @@
     bridge?.setSeed(seed);
   });
 
-  // Auto-restart sidecar when model or renderSize changes while running
+  // Immediate CFG scale sync
+  $effect(() => {
+    bridge?.setCfgScale(cfgScale);
+  });
+
+  // Debounced negative prompt sync
+  let negPromptTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    const currentNeg = negativePrompt;
+    clearTimeout(negPromptTimeout);
+    negPromptTimeout = setTimeout(() => {
+      bridge?.setNegativePrompt(currentNeg);
+    }, 300);
+  });
+
+  // Immediate num steps sync
+  $effect(() => {
+    bridge?.setNumSteps(numSteps);
+  });
+
+  // Auto-restart sidecar when model or renderSize changes while running.
+  // Uses untrack() for diffusionState so this effect only re-runs when
+  // model or renderSize actually change — not when diffusionState cycles
+  // through disconnected→loading→connecting→connected during a restart.
   let prevModel: string;
   let prevRenderSize: number;
   $effect(() => {
     const m = model;
     const rs = renderSize;
     if (prevModel !== undefined && prevRenderSize !== undefined) {
-      if ((m !== prevModel || rs !== prevRenderSize) && diffusionState === "connected") {
+      if ((m !== prevModel || rs !== prevRenderSize) && untrack(() => diffusionState) === "connected") {
         restartSidecar();
       }
     }
@@ -169,6 +203,9 @@
     bind:seed
     bind:model
     bind:renderSize
+    bind:cfgScale
+    bind:negativePrompt
+    bind:numSteps
     onclear={handleClear}
     {diffusionState}
     onToggleDiffusion={handleToggleDiffusion}

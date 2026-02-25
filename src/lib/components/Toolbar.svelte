@@ -10,6 +10,9 @@
     seed = $bindable(42),
     model = $bindable("sdxs"),
     renderSize = $bindable(512),
+    cfgScale = $bindable(1.0),
+    negativePrompt = $bindable(""),
+    numSteps = $bindable(1),
     onclear,
     diffusionState = "disconnected",
     onToggleDiffusion,
@@ -24,6 +27,9 @@
     seed: number;
     model: string;
     renderSize: number;
+    cfgScale: number;
+    negativePrompt: string;
+    numSteps: number;
     onclear?: () => void;
     diffusionState: string;
     onToggleDiffusion?: () => void;
@@ -111,6 +117,39 @@
   </div>
 
   <div class="toolbar toolbar-advanced">
+    {#if model === "sd-turbo"}
+      <div class="tool-group">
+        <span class="tool-label">CFG</span>
+        <div class="tool-control">
+          <label title="Classifier-free guidance scale (1 = off, higher = stronger prompt adherence, halves FPS)">Scale
+            <input type="range" min="1" max="20" step="0.5" bind:value={cfgScale} />
+          </label>
+          <span class="value">{cfgScale.toFixed(1)}</span>
+        </div>
+        <div class="tool-control">
+          <label title="Number of denoising steps (more = better quality, proportionally slower)">Steps
+            <input type="range" min="1" max="8" step="1" bind:value={numSteps} />
+          </label>
+          <span class="value">{numSteps}</span>
+        </div>
+      </div>
+
+      <div class="separator"></div>
+
+      <div class="tool-group neg-prompt-group">
+        <label class="tool-label">Negative
+          <input
+            type="text"
+            class="neg-prompt-input"
+            placeholder="What to avoid..."
+            bind:value={negativePrompt}
+          />
+        </label>
+      </div>
+
+      <div class="separator"></div>
+    {/if}
+
     <div class="tool-group">
       <span class="tool-label">Pipeline</span>
       <div class="tool-control">
@@ -360,6 +399,32 @@
     padding: 2px 6px;
     min-width: unset;
     line-height: 1;
+  }
+
+  .neg-prompt-group {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .neg-prompt-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-control);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    outline: none;
+  }
+
+  .neg-prompt-input:focus {
+    border-color: var(--accent);
+  }
+
+  .neg-prompt-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.5;
   }
 
   .restart-group {
