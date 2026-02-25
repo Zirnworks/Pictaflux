@@ -12,6 +12,11 @@
   let brushOpacity = $state(1.0);
   let prompt = $state("oil painting style, masterpiece, highly detailed");
   let strength = $state(0.5);
+  let feedback = $state(0.1);
+  let lerpSpeed = $state(0.05);
+  let seed = $state(42);
+  let model = $state("sdxs");
+  let renderSize = $state(512);
 
   let drawingCanvas: DrawingCanvas;
   let previewPane: PreviewPane;
@@ -45,7 +50,9 @@
     } else if (diffusionState === "disconnected" || diffusionState === "error") {
       diffusionState = "loading";
       try {
-        const result = await startSidecar(SIDECAR_PORT, prompt, 0.1, strength);
+        const result = await startSidecar(
+          SIDECAR_PORT, prompt, feedback, strength, model, renderSize,
+        );
         connectBridge(result.port);
       } catch (e) {
         console.error("Start error:", e);
@@ -60,8 +67,12 @@
       port,
       onFrame: (url) => previewPane?.setImage(url),
       onStateChange: (state) => {
-        if (state === "connected") diffusionState = "connected";
-        else if (state === "disconnected" && diffusionState !== "loading")
+        if (state === "connected") {
+          diffusionState = "connected";
+          // Sync runtime params not passed via CLI
+          bridge?.setLerpSpeed(lerpSpeed);
+          bridge?.setSeed(seed);
+        } else if (state === "disconnected" && diffusionState !== "loading")
           diffusionState = "disconnected";
         else if (state === "error") diffusionState = "error";
       },
@@ -73,6 +84,27 @@
       () => drawingCanvas?.toBlob(0.80, 512) ?? Promise.resolve(null),
     );
     bridge.connect();
+  }
+
+  async function restartSidecar() {
+    bridge?.disconnect();
+    bridge = null;
+    try {
+      await stopSidecar();
+    } catch (e) {
+      console.error("Stop error:", e);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+    diffusionState = "loading";
+    try {
+      const result = await startSidecar(
+        SIDECAR_PORT, prompt, feedback, strength, model, renderSize,
+      );
+      connectBridge(result.port);
+    } catch (e) {
+      console.error("Restart error:", e);
+      diffusionState = "error";
+    }
   }
 
   // Debounced prompt sync to pipeline
@@ -90,6 +122,36 @@
     bridge?.setStrength(strength);
   });
 
+  // Immediate feedback sync
+  $effect(() => {
+    bridge?.setFeedback(feedback);
+  });
+
+  // Immediate lerp speed sync
+  $effect(() => {
+    bridge?.setLerpSpeed(lerpSpeed);
+  });
+
+  // Immediate seed sync
+  $effect(() => {
+    bridge?.setSeed(seed);
+  });
+
+  // Auto-restart sidecar when model or renderSize changes while running
+  let prevModel: string;
+  let prevRenderSize: number;
+  $effect(() => {
+    const m = model;
+    const rs = renderSize;
+    if (prevModel !== undefined && prevRenderSize !== undefined) {
+      if ((m !== prevModel || rs !== prevRenderSize) && diffusionState === "connected") {
+        restartSidecar();
+      }
+    }
+    prevModel = m;
+    prevRenderSize = rs;
+  });
+
   onDestroy(() => {
     bridge?.disconnect();
   });
@@ -102,6 +164,11 @@
     bind:brushOpacity
     bind:prompt
     bind:strength
+    bind:feedback
+    bind:lerpSpeed
+    bind:seed
+    bind:model
+    bind:renderSize
     onclear={handleClear}
     {diffusionState}
     onToggleDiffusion={handleToggleDiffusion}

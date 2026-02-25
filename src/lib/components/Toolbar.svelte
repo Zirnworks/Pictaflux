@@ -5,6 +5,11 @@
     brushOpacity = $bindable(1.0),
     prompt = $bindable(""),
     strength = $bindable(0.5),
+    feedback = $bindable(0.1),
+    lerpSpeed = $bindable(0.05),
+    seed = $bindable(42),
+    model = $bindable("sdxs"),
+    renderSize = $bindable(512),
     onclear,
     diffusionState = "disconnected",
     onToggleDiffusion,
@@ -14,88 +19,150 @@
     brushOpacity: number;
     prompt: string;
     strength: number;
+    feedback: number;
+    lerpSpeed: number;
+    seed: number;
+    model: string;
+    renderSize: number;
     onclear?: () => void;
     diffusionState: string;
     onToggleDiffusion?: () => void;
   } = $props();
+
+  function randomizeSeed() {
+    seed = Math.floor(Math.random() * 2147483647);
+  }
 </script>
 
-<div class="toolbar">
-  <div class="tool-group">
-    <span class="tool-label">Brush</span>
-    <div class="tool-control">
-      <label title="Brush diameter in pixels">Size
-        <input type="range" min="1" max="64" step="1" bind:value={brushSize} />
+<div class="toolbar-container">
+  <div class="toolbar">
+    <div class="tool-group">
+      <span class="tool-label">Brush</span>
+      <div class="tool-control">
+        <label title="Brush diameter in pixels">Size
+          <input type="range" min="1" max="64" step="1" bind:value={brushSize} />
+        </label>
+        <span class="value">{brushSize}px</span>
+      </div>
+      <div class="tool-control">
+        <label title="Brush opacity (pressure scales this)">Opacity
+          <input type="range" min="0.05" max="1.0" step="0.05" bind:value={brushOpacity} />
+        </label>
+        <span class="value">{(brushOpacity * 100).toFixed(0)}%</span>
+      </div>
+      <div class="color-control">
+        <input type="color" bind:value={brushColor} title="Brush color" />
+        <span class="color-hex">{brushColor}</span>
+      </div>
+    </div>
+
+    <div class="separator"></div>
+
+    <div class="tool-group prompt-group">
+      <label class="tool-label">Prompt
+        <input
+          type="text"
+          class="prompt-input"
+          placeholder="Describe the style..."
+          bind:value={prompt}
+        />
       </label>
-      <span class="value">{brushSize}px</span>
     </div>
-    <div class="tool-control">
-      <label title="Brush opacity (pressure scales this)">Opacity
-        <input type="range" min="0.05" max="1.0" step="0.05" bind:value={brushOpacity} />
-      </label>
-      <span class="value">{(brushOpacity * 100).toFixed(0)}%</span>
+
+    <div class="separator"></div>
+
+    <div class="tool-group">
+      <div class="tool-control">
+        <label title="img2img strength: low = faithful to drawing, high = more creative">Strength
+          <input type="range" min="0" max="1.0" step="0.05" bind:value={strength} />
+        </label>
+        <span class="value">{(strength * 100).toFixed(0)}%</span>
+      </div>
     </div>
-    <div class="color-control">
-      <input type="color" bind:value={brushColor} title="Brush color" />
-      <span class="color-hex">{brushColor}</span>
+
+    <div class="separator"></div>
+
+    <div class="tool-group">
+      <button
+        class="diffusion-btn"
+        class:active={diffusionState === "connected"}
+        class:loading={diffusionState === "loading" || diffusionState === "connecting"}
+        class:error={diffusionState === "error"}
+        onclick={onToggleDiffusion}
+        disabled={diffusionState === "loading" || diffusionState === "connecting"}
+      >
+        {#if diffusionState === "loading" || diffusionState === "connecting"}
+          Loading...
+        {:else if diffusionState === "connected"}
+          Stop
+        {:else if diffusionState === "error"}
+          Retry
+        {:else}
+          Diffuse
+        {/if}
+      </button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="tool-group">
+      <button class="clear-btn" onclick={onclear}>Clear</button>
     </div>
   </div>
 
-  <div class="separator"></div>
-
-  <div class="tool-group prompt-group">
-    <label class="tool-label">Prompt
-      <input
-        type="text"
-        class="prompt-input"
-        placeholder="Describe the style..."
-        bind:value={prompt}
-      />
-    </label>
-  </div>
-
-  <div class="separator"></div>
-
-  <div class="tool-group">
-    <div class="tool-control">
-      <label title="img2img strength: low = faithful to drawing, high = more creative">Strength
-        <input type="range" min="0" max="1.0" step="0.05" bind:value={strength} />
-      </label>
-      <span class="value">{(strength * 100).toFixed(0)}%</span>
+  <div class="toolbar toolbar-advanced">
+    <div class="tool-group">
+      <span class="tool-label">Pipeline</span>
+      <div class="tool-control">
+        <label title="Latent feedback: blends previous frame latent into current (temporal stability)">Feedback
+          <input type="range" min="0" max="1" step="0.01" bind:value={feedback} />
+        </label>
+        <span class="value">{(feedback * 100).toFixed(0)}%</span>
+      </div>
+      <div class="tool-control">
+        <label title="How fast prompt embedding transitions to new prompt">Lerp
+          <input type="range" min="0.01" max="0.5" step="0.01" bind:value={lerpSpeed} />
+        </label>
+        <span class="value">{lerpSpeed.toFixed(2)}</span>
+      </div>
+      <div class="tool-control seed-control">
+        <label title="Fixed noise seed (deterministic output pattern)">Seed
+          <input type="number" class="seed-input" min="0" max="2147483647" bind:value={seed} />
+        </label>
+        <button class="seed-randomize" onclick={randomizeSeed} title="Randomize seed">&#x2684;</button>
+      </div>
     </div>
-  </div>
 
-  <div class="separator"></div>
+    <div class="separator"></div>
 
-  <div class="tool-group">
-    <button
-      class="diffusion-btn"
-      class:active={diffusionState === "connected"}
-      class:loading={diffusionState === "loading" || diffusionState === "connecting"}
-      class:error={diffusionState === "error"}
-      onclick={onToggleDiffusion}
-      disabled={diffusionState === "loading" || diffusionState === "connecting"}
-    >
-      {#if diffusionState === "loading" || diffusionState === "connecting"}
-        Loading...
-      {:else if diffusionState === "connected"}
-        Stop
-      {:else if diffusionState === "error"}
-        Retry
-      {:else}
-        Diffuse
-      {/if}
-    </button>
-  </div>
-
-  <div class="spacer"></div>
-
-  <div class="tool-group">
-    <button class="clear-btn" onclick={onclear}>Clear</button>
+    <div class="tool-group restart-group">
+      <span class="restart-indicator" title="Changes require sidecar restart">&#x21bb;</span>
+      <div class="tool-control">
+        <label title="Diffusion model (restart required)">Model
+          <select bind:value={model}>
+            <option value="sdxs">SDXS</option>
+            <option value="sd-turbo">SD Turbo</option>
+          </select>
+        </label>
+      </div>
+      <div class="tool-control">
+        <label title="Render resolution in pixels (restart required)">Size
+          <select bind:value={renderSize}>
+            <option value={512}>512px</option>
+            <option value={384}>384px</option>
+            <option value={320}>320px</option>
+          </select>
+        </label>
+      </div>
+    </div>
   </div>
 </div>
 
 <style>
+  .toolbar-container {
+    flex-shrink: 0;
+  }
+
   .toolbar {
     display: flex;
     align-items: center;
@@ -106,6 +173,12 @@
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     user-select: none;
+  }
+
+  .toolbar-advanced {
+    height: 36px;
+    padding: 4px 12px;
+    gap: 10px;
   }
 
   .tool-group {
@@ -259,5 +332,58 @@
     background: var(--bg-control);
     border-color: #e53e3e;
     color: #e53e3e;
+  }
+
+  /* Advanced toolbar row */
+  .seed-control {
+    gap: 4px;
+  }
+
+  .seed-input {
+    width: 80px;
+    background: var(--bg-control);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .seed-input:focus {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  .seed-randomize {
+    font-size: 14px;
+    padding: 2px 6px;
+    min-width: unset;
+    line-height: 1;
+  }
+
+  .restart-group {
+    border-left: 2px solid var(--accent-dark);
+    padding-left: 12px;
+  }
+
+  .restart-indicator {
+    font-size: 13px;
+    color: var(--accent-dark);
+  }
+
+  select {
+    background: var(--bg-control);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  select:focus {
+    border-color: var(--accent);
+    outline: none;
   }
 </style>

@@ -93,6 +93,18 @@ export class DiffusionBridge {
     }
   }
 
+  setLerpSpeed(value: number): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "set_lerp_speed", value }));
+    }
+  }
+
+  setSeed(value: number): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "set_seed", value: Math.floor(value) }));
+    }
+  }
+
   private async sendNextFrame(): Promise<void> {
     if (!this.running || !this.canvasGetter || this.pendingFrame) return;
 

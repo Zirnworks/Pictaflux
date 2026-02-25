@@ -9,6 +9,8 @@ Protocol:
     - {"type": "set_prompt", "prompt": "..."}
     - {"type": "set_feedback", "value": 0.3}
     - {"type": "set_strength", "value": 0.5}
+    - {"type": "set_lerp_speed", "value": 0.05}
+    - {"type": "set_seed", "value": 42}
     - {"type": "ping"} -> {"type": "pong"}
 
 Lifecycle:
@@ -117,6 +119,15 @@ async def handle_command(ws, cmd):
             pipeline.latent_feedback = float(cmd.get("value", 0.1))
     elif t == "set_strength":
         set_strength(float(cmd.get("value", 0.5)))
+    elif t == "set_lerp_speed":
+        if pipeline is not None:
+            pipeline._prompt_lerp_speed = float(cmd.get("value", 0.05))
+    elif t == "set_seed":
+        if pipeline is not None:
+            seed = int(cmd.get("value", 42))
+            pipeline._fixed_noise = np.random.RandomState(seed).randn(
+                *pipeline._fixed_noise.shape
+            ).astype(pipeline._fixed_noise.dtype)
     elif t == "ping":
         await ws.send(json.dumps({"type": "pong"}))
 

@@ -21,12 +21,16 @@ export async function startSidecar(
   prompt: string,
   feedback: number,
   strength: number = 0.5,
+  model: string = "sdxs",
+  renderSize: number = 512,
 ): Promise<SidecarStartResult> {
   return await invoke<SidecarStartResult>("start_sidecar", {
     port,
     prompt,
     feedback,
     strength,
+    model,
+    renderSize,
   });
 }
 
