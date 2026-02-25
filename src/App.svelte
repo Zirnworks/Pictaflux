@@ -53,6 +53,8 @@
     } else if (diffusionState === "disconnected" || diffusionState === "error") {
       diffusionState = "loading";
       try {
+        // Best-effort stop: clears stale Rust state (e.g. after HMR reload)
+        try { await stopSidecar(); } catch {}
         const result = await startSidecar(
           SIDECAR_PORT, prompt, feedback, strength, model, renderSize,
         );
@@ -129,28 +131,35 @@
   });
 
   // Immediate strength sync to pipeline
+  // NOTE: read value before optional chain — if bridge is null on first run,
+  // ?. short-circuits and Svelte 5 never registers the $state as a dependency.
   $effect(() => {
-    bridge?.setStrength(strength);
+    const s = strength;
+    bridge?.setStrength(s);
   });
 
   // Immediate feedback sync
   $effect(() => {
-    bridge?.setFeedback(feedback);
+    const f = feedback;
+    bridge?.setFeedback(f);
   });
 
   // Immediate lerp speed sync
   $effect(() => {
-    bridge?.setLerpSpeed(lerpSpeed);
+    const l = lerpSpeed;
+    bridge?.setLerpSpeed(l);
   });
 
   // Immediate seed sync
   $effect(() => {
-    bridge?.setSeed(seed);
+    const s = seed;
+    bridge?.setSeed(s);
   });
 
   // Immediate CFG scale sync
   $effect(() => {
-    bridge?.setCfgScale(cfgScale);
+    const c = cfgScale;
+    bridge?.setCfgScale(c);
   });
 
   // Debounced negative prompt sync
@@ -165,7 +174,8 @@
 
   // Immediate num steps sync
   $effect(() => {
-    bridge?.setNumSteps(numSteps);
+    const n = numSteps;
+    bridge?.setNumSteps(n);
   });
 
   // Auto-restart sidecar when model or renderSize changes while running.

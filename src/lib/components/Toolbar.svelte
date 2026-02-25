@@ -46,7 +46,7 @@
       <span class="tool-label">Brush</span>
       <div class="tool-control">
         <label title="Brush diameter in pixels">Size
-          <input type="range" min="1" max="64" step="1" bind:value={brushSize} />
+          <input type="range" min="1" max="256" step="1" bind:value={brushSize} />
         </label>
         <span class="value">{brushSize}px</span>
       </div>

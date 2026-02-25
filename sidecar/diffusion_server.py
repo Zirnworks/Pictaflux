@@ -297,8 +297,6 @@ async def main_async(args):
 
     # Encode empty string as default unconditional embedding for CFG
     _negative_embeds = pipeline._encode_single("")
-    print(f"  max_timestep={_max_timestep}, initial strength={args.strength}", flush=True)
-
     # Start WebSocket server
     stop = asyncio.Event()
 
