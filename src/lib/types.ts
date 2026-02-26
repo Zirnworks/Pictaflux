@@ -1,3 +1,5 @@
+export type BlendMode = "source-over" | "multiply" | "screen" | "overlay";
+
 export interface BrushState {
   size: number;
   color: string;

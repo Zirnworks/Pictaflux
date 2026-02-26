@@ -3,9 +3,13 @@
   import Toolbar from "./lib/components/Toolbar.svelte";
   import SplitPane from "./lib/components/SplitPane.svelte";
   import DrawingCanvas from "./lib/components/DrawingCanvas.svelte";
+  import LayerPanel from "./lib/components/LayerPanel.svelte";
   import PreviewPane from "./lib/components/PreviewPane.svelte";
+  import { LayerManager } from "./lib/layers.svelte";
   import { DiffusionBridge } from "./lib/diffusion";
   import { startSidecar, stopSidecar } from "./lib/tauri";
+
+  const layerManager = new LayerManager();
 
   let brushSize = $state(8);
   let brushColor = $state("#ffffff");
@@ -198,6 +202,7 @@
 
   onDestroy(() => {
     bridge?.disconnect();
+    layerManager.dispose();
   });
 </script>
 
@@ -223,12 +228,16 @@
   <div class="app-layout">
     <SplitPane>
       {#snippet left()}
-        <DrawingCanvas
-          bind:this={drawingCanvas}
-          {brushSize}
-          bind:brushColor
-          {brushOpacity}
-        />
+        <div class="drawing-area">
+          <LayerPanel {layerManager} />
+          <DrawingCanvas
+            bind:this={drawingCanvas}
+            {brushSize}
+            bind:brushColor
+            {brushOpacity}
+            {layerManager}
+          />
+        </div>
       {/snippet}
       {#snippet right()}
         <PreviewPane bind:this={previewPane} />
@@ -250,5 +259,11 @@
     width: 100%;
     flex: 1;
     min-height: 0;
+  }
+
+  .drawing-area {
+    display: flex;
+    width: 100%;
+    height: 100%;
   }
 </style>

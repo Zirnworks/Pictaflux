@@ -1,27 +1,31 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { LayerManager } from "../layers.svelte";
 
   let {
     brushSize = 8,
     brushColor = $bindable("#ffffff"),
     brushOpacity = 1.0,
+    layerManager,
   }: {
     brushSize: number;
     brushColor: string;
     brushOpacity: number;
+    layerManager: LayerManager;
   } = $props();
 
   let canvasEl: HTMLCanvasElement;
-  let ctx: CanvasRenderingContext2D | null = null;
+  let displayCtx: CanvasRenderingContext2D | null = null;
   let drawing = $state(false);
   let eyedropping = $state(false);
   let lastX = 0;
   let lastY = 0;
   let containerEl: HTMLElement;
+  let dpr = 1;
 
   onMount(() => {
-    ctx = canvasEl.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
+    displayCtx = canvasEl.getContext("2d", { willReadFrequently: true });
+    if (!displayCtx) return;
 
     resizeCanvas();
 
@@ -32,28 +36,42 @@
   });
 
   function resizeCanvas() {
-    if (!ctx || !containerEl) return;
+    if (!displayCtx || !containerEl) return;
     const rect = containerEl.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    dpr = window.devicePixelRatio || 1;
 
-    const imageData =
-      canvasEl.width > 0 && canvasEl.height > 0
-        ? ctx.getImageData(0, 0, canvasEl.width, canvasEl.height)
-        : null;
+    const physW = Math.round(rect.width * dpr);
+    const physH = Math.round(rect.height * dpr);
 
-    canvasEl.width = rect.width * dpr;
-    canvasEl.height = rect.height * dpr;
+    canvasEl.width = physW;
+    canvasEl.height = physH;
     canvasEl.style.width = `${rect.width}px`;
     canvasEl.style.height = `${rect.height}px`;
-    ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = "#1e1e1e";
-    ctx.fillRect(0, 0, rect.width, rect.height);
-
-    if (imageData) {
-      ctx.putImageData(imageData, 0, 0);
+    if (layerManager.layers.length === 0) {
+      layerManager.init(physW, physH);
+    } else {
+      layerManager.resizeAll(physW, physH);
     }
+
+    compositeToDisplay();
   }
+
+  function compositeToDisplay() {
+    if (!displayCtx) return;
+    displayCtx.setTransform(1, 0, 0, 1, 0, 0);
+    layerManager.compositeToContext(displayCtx);
+  }
+
+  // Recomposite when layer visibility/opacity/blendMode changes
+  $effect(() => {
+    for (const l of layerManager.layers) {
+      l.visible;
+      l.opacity;
+      l.blendMode;
+    }
+    compositeToDisplay();
+  });
 
   function getPosition(e: PointerEvent): { x: number; y: number } {
     const rect = canvasEl.getBoundingClientRect();
@@ -82,6 +100,7 @@
     lastX = pos.x;
     lastY = pos.y;
     drawDot(pos.x, pos.y, getPressure(e));
+    compositeToDisplay();
   }
 
   function onPointerMove(e: PointerEvent) {
@@ -89,27 +108,37 @@
       pickColor(e);
       return;
     }
-    if (!drawing || !ctx) return;
+    if (!drawing) return;
 
     const pos = getPosition(e);
     const pressure = getPressure(e);
     drawStroke(lastX, lastY, pos.x, pos.y, pressure);
     lastX = pos.x;
     lastY = pos.y;
+    compositeToDisplay();
   }
 
   function onPointerUp() {
+    if (drawing) {
+      layerManager.updateActiveLayerThumbnail();
+    }
     drawing = false;
     eyedropping = false;
   }
 
   function drawDot(x: number, y: number, pressure: number) {
-    if (!ctx) return;
-    const radius = (brushSize / 2) * pressure;
+    const layer = layerManager.activeLayer;
+    if (!layer) return;
+    const ctx = layer.ctx;
+
+    const px = x * dpr;
+    const py = y * dpr;
+    const radius = (brushSize / 2) * pressure * dpr;
+
     ctx.globalAlpha = brushOpacity * pressure;
     ctx.fillStyle = brushColor;
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.arc(px, py, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1.0;
   }
@@ -121,27 +150,29 @@
     toY: number,
     pressure: number,
   ) {
-    if (!ctx) return;
-    const lineWidth = brushSize * pressure;
+    const layer = layerManager.activeLayer;
+    if (!layer) return;
+    const ctx = layer.ctx;
+
+    const lineWidth = brushSize * pressure * dpr;
     ctx.globalAlpha = brushOpacity * pressure;
     ctx.strokeStyle = brushColor;
     ctx.lineWidth = lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(fromX, fromY);
-    ctx.lineTo(toX, toY);
+    ctx.moveTo(fromX * dpr, fromY * dpr);
+    ctx.lineTo(toX * dpr, toY * dpr);
     ctx.stroke();
     ctx.globalAlpha = 1.0;
   }
 
   function pickColor(e: PointerEvent) {
-    if (!ctx) return;
+    if (!displayCtx) return;
     const pos = getPosition(e);
-    const dpr = window.devicePixelRatio || 1;
-    const pixel = ctx.getImageData(
-      pos.x * dpr,
-      pos.y * dpr,
+    const pixel = displayCtx.getImageData(
+      Math.round(pos.x * dpr),
+      Math.round(pos.y * dpr),
       1,
       1,
     ).data;
@@ -158,15 +189,13 @@
   }
 
   export function clear() {
-    if (!ctx || !containerEl) return;
-    const rect = containerEl.getBoundingClientRect();
-    ctx.fillStyle = "#1e1e1e";
-    ctx.fillRect(0, 0, rect.width, rect.height);
+    layerManager.clearActiveLayer();
+    compositeToDisplay();
   }
 
   export function getImageData(): ImageData | null {
-    if (!ctx) return null;
-    return ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
+    if (!displayCtx) return null;
+    return displayCtx.getImageData(0, 0, canvasEl.width, canvasEl.height);
   }
 
   export function toBlob(
@@ -174,23 +203,40 @@
     targetSize: number = 512,
   ): Promise<Blob | null> {
     return new Promise((resolve) => {
-      if (!canvasEl) {
+      if (!canvasEl || layerManager.layers.length === 0) {
         resolve(null);
         return;
       }
-      const offscreen = new OffscreenCanvas(targetSize, targetSize);
-      const octx = offscreen.getContext("2d");
+
+      const physW = canvasEl.width;
+      const physH = canvasEl.height;
+
+      // Composite all layers to a temp canvas at physical size
+      const composite = new OffscreenCanvas(physW, physH);
+      const cctx = composite.getContext("2d");
+      if (!cctx) {
+        resolve(null);
+        return;
+      }
+      layerManager.compositeToContext(cctx);
+
+      // Crop center square + scale to targetSize
+      const out = new OffscreenCanvas(targetSize, targetSize);
+      const octx = out.getContext("2d");
       if (!octx) {
         resolve(null);
         return;
       }
-      const srcW = canvasEl.width;
-      const srcH = canvasEl.height;
-      const srcMin = Math.min(srcW, srcH);
-      const sx = (srcW - srcMin) / 2;
-      const sy = (srcH - srcMin) / 2;
-      octx.drawImage(canvasEl, sx, sy, srcMin, srcMin, 0, 0, targetSize, targetSize);
-      offscreen
+      const srcMin = Math.min(physW, physH);
+      const sx = (physW - srcMin) / 2;
+      const sy = (physH - srcMin) / 2;
+      octx.drawImage(
+        composite,
+        sx, sy, srcMin, srcMin,
+        0, 0, targetSize, targetSize,
+      );
+
+      out
         .convertToBlob({ type: "image/jpeg", quality })
         .then(resolve)
         .catch(() => resolve(null));
@@ -212,7 +258,8 @@
 
 <style>
   .canvas-container {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     height: 100%;
     overflow: hidden;
     background: var(--canvas-bg);
