@@ -1,8 +1,11 @@
 <script lang="ts">
   import type { LayerManager } from "../layers.svelte";
   import type { BlendMode } from "../types";
+  import ColorWheel from "./ColorWheel.svelte";
 
   let { layerManager }: { layerManager: LayerManager } = $props();
+
+  let showColorWheel = $state(false);
 
   let dragFromDisplay: number | null = $state(null);
   let dragOverDisplay: number | null = $state(null);
@@ -176,6 +179,28 @@
         </div>
       {/if}
     {/each}
+  </div>
+
+  <div class="bg-section">
+    <button
+      class="vis-toggle bg-vis"
+      class:hidden={!layerManager.bgVisible}
+      onclick={() => (layerManager.bgVisible = !layerManager.bgVisible)}
+      title={layerManager.bgVisible ? "Hide background" : "Show background"}
+    >{layerManager.bgVisible ? "\u{1F441}" : "\u2014"}</button>
+    <span class="bg-label">BG</span>
+    <button
+      class="bg-swatch"
+      style="background: {layerManager.bgColor}"
+      onclick={() => (showColorWheel = !showColorWheel)}
+      title="Change background color"
+    ></button>
+    {#if showColorWheel}
+      <ColorWheel
+        bind:color={layerManager.bgColor}
+        onclose={() => (showColorWheel = false)}
+      />
+    {/if}
   </div>
 
   <div class="panel-footer">
@@ -396,6 +421,42 @@
     min-width: 0;
     font-size: 10px;
     padding: 1px 4px;
+  }
+
+  .bg-section {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--border);
+    position: relative;
+  }
+
+  .bg-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex: 1;
+  }
+
+  .bg-vis {
+    flex-shrink: 0;
+  }
+
+  .bg-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    padding: 0;
+    min-width: unset;
+    flex-shrink: 0;
+  }
+
+  .bg-swatch:hover {
+    border-color: var(--accent);
   }
 
   .panel-footer {

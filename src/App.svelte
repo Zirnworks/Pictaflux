@@ -6,10 +6,25 @@
   import LayerPanel from "./lib/components/LayerPanel.svelte";
   import PreviewPane from "./lib/components/PreviewPane.svelte";
   import { LayerManager } from "./lib/layers.svelte";
+  import {
+    BrushEngine,
+    createDefaultRoundBrush,
+    createDefaultPreset,
+  } from "./lib/brush-engine";
   import { DiffusionBridge } from "./lib/diffusion";
   import { startSidecar, stopSidecar } from "./lib/tauri";
 
   const layerManager = new LayerManager();
+
+  // Brush engine (async init — needs createImageBitmap)
+  let brushEngine: BrushEngine | null = $state(null);
+
+  async function initBrushEngine() {
+    const defaultTip = await createDefaultRoundBrush();
+    const defaultPreset = createDefaultPreset(defaultTip);
+    brushEngine = new BrushEngine(defaultPreset);
+  }
+  initBrushEngine();
 
   let brushSize = $state(8);
   let brushColor = $state("#ffffff");
@@ -230,13 +245,16 @@
       {#snippet left()}
         <div class="drawing-area">
           <LayerPanel {layerManager} />
-          <DrawingCanvas
-            bind:this={drawingCanvas}
-            {brushSize}
-            bind:brushColor
-            {brushOpacity}
-            {layerManager}
-          />
+          {#if brushEngine}
+            <DrawingCanvas
+              bind:this={drawingCanvas}
+              {brushSize}
+              bind:brushColor
+              {brushOpacity}
+              {brushEngine}
+              {layerManager}
+            />
+          {/if}
         </div>
       {/snippet}
       {#snippet right()}

@@ -66,6 +66,8 @@ export class Layer {
 export class LayerManager {
   layers: Layer[] = $state([]);
   activeLayerId = $state(0);
+  bgColor = $state("#1e1e1e");
+  bgVisible = $state(true);
 
   get activeLayer(): Layer | undefined {
     return this.layers.find((l) => l.id === this.activeLayerId);
@@ -74,9 +76,7 @@ export class LayerManager {
   init(physW: number, physH: number) {
     for (const l of this.layers) l.dispose();
 
-    const bg = new Layer("Background", physW, physH);
-    bg.ctx.fillStyle = "#1e1e1e";
-    bg.ctx.fillRect(0, 0, physW, physH);
+    const bg = new Layer("Layer 1", physW, physH);
 
     this.layers = [bg];
     this.activeLayerId = bg.id;
@@ -216,6 +216,13 @@ export class LayerManager {
     const h = target.canvas.height;
     target.clearRect(0, 0, w, h);
 
+    if (this.bgVisible) {
+      target.globalAlpha = 1.0;
+      target.globalCompositeOperation = "source-over";
+      target.fillStyle = this.bgColor;
+      target.fillRect(0, 0, w, h);
+    }
+
     for (const layer of this.layers) {
       if (!layer.visible) continue;
       target.globalAlpha = layer.opacity;
@@ -228,23 +235,15 @@ export class LayerManager {
   }
 
   resizeAll(physW: number, physH: number) {
-    for (let i = 0; i < this.layers.length; i++) {
-      this.layers[i].resize(physW, physH, i === 0 ? "#1e1e1e" : undefined);
+    for (const layer of this.layers) {
+      layer.resize(physW, physH);
     }
   }
 
   clearActiveLayer() {
     const layer = this.activeLayer;
     if (!layer) return;
-
-    const w = layer.canvas.width;
-    const h = layer.canvas.height;
-    layer.ctx.clearRect(0, 0, w, h);
-
-    if (this.layers.indexOf(layer) === 0) {
-      layer.ctx.fillStyle = "#1e1e1e";
-      layer.ctx.fillRect(0, 0, w, h);
-    }
+    layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
   }
 
   updateActiveLayerThumbnail() {

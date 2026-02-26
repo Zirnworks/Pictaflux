@@ -1,16 +1,19 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { LayerManager } from "../layers.svelte";
+  import type { BrushEngine } from "../brush-engine";
 
   let {
     brushSize = 8,
     brushColor = $bindable("#ffffff"),
     brushOpacity = 1.0,
+    brushEngine,
     layerManager,
   }: {
     brushSize: number;
     brushColor: string;
     brushOpacity: number;
+    brushEngine: BrushEngine;
     layerManager: LayerManager;
   } = $props();
 
@@ -18,10 +21,18 @@
   let displayCtx: CanvasRenderingContext2D | null = null;
   let drawing = $state(false);
   let eyedropping = $state(false);
-  let lastX = 0;
-  let lastY = 0;
   let containerEl: HTMLElement;
   let dpr = 1;
+
+  // Sync brush params to engine (read into locals — Svelte 5 gotcha)
+  $effect(() => {
+    const s = brushSize;
+    const c = brushColor;
+    const o = brushOpacity;
+    brushEngine.setSize(s);
+    brushEngine.setColor(c);
+    brushEngine.setOpacity(o);
+  });
 
   onMount(() => {
     displayCtx = canvasEl.getContext("2d", { willReadFrequently: true });
@@ -48,6 +59,8 @@
     canvasEl.style.width = `${rect.width}px`;
     canvasEl.style.height = `${rect.height}px`;
 
+    brushEngine.setDpr(dpr);
+
     if (layerManager.layers.length === 0) {
       layerManager.init(physW, physH);
     } else {
@@ -63,8 +76,10 @@
     layerManager.compositeToContext(displayCtx);
   }
 
-  // Recomposite when layer visibility/opacity/blendMode changes
+  // Recomposite when layer properties or background changes
   $effect(() => {
+    layerManager.bgColor;
+    layerManager.bgVisible;
     for (const l of layerManager.layers) {
       l.visible;
       l.opacity;
@@ -97,9 +112,17 @@
 
     drawing = true;
     const pos = getPosition(e);
-    lastX = pos.x;
-    lastY = pos.y;
-    drawDot(pos.x, pos.y, getPressure(e));
+    const layer = layerManager.activeLayer;
+    if (!layer) return;
+
+    brushEngine.beginStroke(
+      layer.ctx,
+      pos.x,
+      pos.y,
+      getPressure(e),
+      e.tiltX ?? 0,
+      e.tiltY ?? 0,
+    );
     compositeToDisplay();
   }
 
@@ -111,60 +134,27 @@
     if (!drawing) return;
 
     const pos = getPosition(e);
-    const pressure = getPressure(e);
-    drawStroke(lastX, lastY, pos.x, pos.y, pressure);
-    lastX = pos.x;
-    lastY = pos.y;
+    const layer = layerManager.activeLayer;
+    if (!layer) return;
+
+    brushEngine.addPoint(
+      layer.ctx,
+      pos.x,
+      pos.y,
+      getPressure(e),
+      e.tiltX ?? 0,
+      e.tiltY ?? 0,
+    );
     compositeToDisplay();
   }
 
   function onPointerUp() {
     if (drawing) {
+      brushEngine.endStroke();
       layerManager.updateActiveLayerThumbnail();
     }
     drawing = false;
     eyedropping = false;
-  }
-
-  function drawDot(x: number, y: number, pressure: number) {
-    const layer = layerManager.activeLayer;
-    if (!layer) return;
-    const ctx = layer.ctx;
-
-    const px = x * dpr;
-    const py = y * dpr;
-    const radius = (brushSize / 2) * pressure * dpr;
-
-    ctx.globalAlpha = brushOpacity * pressure;
-    ctx.fillStyle = brushColor;
-    ctx.beginPath();
-    ctx.arc(px, py, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1.0;
-  }
-
-  function drawStroke(
-    fromX: number,
-    fromY: number,
-    toX: number,
-    toY: number,
-    pressure: number,
-  ) {
-    const layer = layerManager.activeLayer;
-    if (!layer) return;
-    const ctx = layer.ctx;
-
-    const lineWidth = brushSize * pressure * dpr;
-    ctx.globalAlpha = brushOpacity * pressure;
-    ctx.strokeStyle = brushColor;
-    ctx.lineWidth = lineWidth;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(fromX * dpr, fromY * dpr);
-    ctx.lineTo(toX * dpr, toY * dpr);
-    ctx.stroke();
-    ctx.globalAlpha = 1.0;
   }
 
   function pickColor(e: PointerEvent) {
@@ -211,7 +201,6 @@
       const physW = canvasEl.width;
       const physH = canvasEl.height;
 
-      // Composite all layers to a temp canvas at physical size
       const composite = new OffscreenCanvas(physW, physH);
       const cctx = composite.getContext("2d");
       if (!cctx) {
@@ -220,7 +209,6 @@
       }
       layerManager.compositeToContext(cctx);
 
-      // Crop center square + scale to targetSize
       const out = new OffscreenCanvas(targetSize, targetSize);
       const octx = out.getContext("2d");
       if (!octx) {
