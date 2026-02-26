@@ -4,8 +4,10 @@
   import SplitPane from "./lib/components/SplitPane.svelte";
   import DrawingCanvas from "./lib/components/DrawingCanvas.svelte";
   import LayerPanel from "./lib/components/LayerPanel.svelte";
+  import BrushLibrary from "./lib/components/BrushLibrary.svelte";
   import PreviewPane from "./lib/components/PreviewPane.svelte";
   import { LayerManager } from "./lib/layers.svelte";
+  import type { BrushPreset } from "./lib/types";
   import {
     BrushEngine,
     createDefaultRoundBrush,
@@ -18,13 +20,26 @@
 
   // Brush engine (async init — needs createImageBitmap)
   let brushEngine: BrushEngine | null = $state(null);
+  let brushPresets: BrushPreset[] = $state([]);
+  let activePresetId = $state("");
 
   async function initBrushEngine() {
     const defaultTip = await createDefaultRoundBrush();
     const defaultPreset = createDefaultPreset(defaultTip);
+    brushPresets = [defaultPreset];
+    activePresetId = defaultPreset.id;
     brushEngine = new BrushEngine(defaultPreset);
   }
   initBrushEngine();
+
+  function handleBrushSelect(preset: BrushPreset) {
+    brushEngine?.setPreset(preset);
+  }
+
+  // Derive active brush name for toolbar
+  let activeBrushName = $derived(
+    brushPresets.find((p) => p.id === activePresetId)?.name ?? "Soft Round",
+  );
 
   let brushSize = $state(8);
   let brushColor = $state("#ffffff");
@@ -239,12 +254,20 @@
     onclear={handleClear}
     {diffusionState}
     onToggleDiffusion={handleToggleDiffusion}
+    {activeBrushName}
   />
   <div class="app-layout">
     <SplitPane>
       {#snippet left()}
         <div class="drawing-area">
-          <LayerPanel {layerManager} />
+          <div class="side-panel">
+            <BrushLibrary
+              bind:presets={brushPresets}
+              bind:activePresetId
+              onselect={handleBrushSelect}
+            />
+            <LayerPanel {layerManager} />
+          </div>
           {#if brushEngine}
             <DrawingCanvas
               bind:this={drawingCanvas}
@@ -283,5 +306,16 @@
     display: flex;
     width: 100%;
     height: 100%;
+  }
+
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    width: 140px;
+    min-width: 140px;
+    height: 100%;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    overflow: hidden;
   }
 </style>

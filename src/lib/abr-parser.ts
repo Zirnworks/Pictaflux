@@ -219,6 +219,15 @@ function parseAbrV1V2(reader: AbrReader): AbrRawBrush[] {
 }
 
 // ── ABR v6+ parser ──
+//
+// v6+ files use 8BIM container blocks. The "samp" block contains sampled
+// brush tip bitmaps as a flat sequence of length-prefixed records (no count).
+//
+// Each record: sampleLen(u4) → idLen(u1) → brushId(idLen) → v62 overhead
+// (264 bytes) → bounds(4×u4) → depth(u2) → compression(u1) → pixels.
+// Records are padded to 4-byte alignment.
+
+const V62_OVERHEAD = 264;
 
 function parseAbrV6Plus(reader: AbrReader): AbrRawBrush[] {
   reader.skip(2); // sub-version
@@ -238,54 +247,69 @@ function parseAbrV6Plus(reader: AbrReader): AbrRawBrush[] {
     const blockSize = reader.readUint32();
     const blockEnd = reader.position + blockSize;
 
-    if (key === "samp" && blockSize > 4) {
-      const sampCount = reader.readUint32();
+    if (key === "samp" && blockSize > 8) {
+      let brushIdx = 0;
 
-      for (let i = 0; i < sampCount; i++) {
-        if (reader.remaining < 4) break;
-        const brushLen = reader.readUint32();
-        const brushEnd = reader.position + brushLen;
+      while (reader.position < blockEnd - 4) {
+        const sampleLen = reader.readUint32();
+        const dataStart = reader.position;
+        const dataEnd = dataStart + sampleLen;
+
+        if (sampleLen < 1 || dataEnd > blockEnd) break;
 
         try {
-          reader.skip(4); // misc
-          const spacing = reader.readUint16();
-          reader.skip(1); // antialiased flag
+          // Read brush ID (length-prefixed ASCII string)
+          const idLen = reader.readUint8();
+          const idBytes = reader.readBytes(idLen);
+          const brushId = String.fromCharCode(...idBytes);
 
-          // Bounds
-          const top = reader.readInt16();
-          const left = reader.readInt16();
-          const bottom = reader.readInt16();
-          const right = reader.readInt16();
+          // Check if enough data for v62 overhead + image header
+          const remaining = dataEnd - reader.position;
+          if (remaining >= V62_OVERHEAD + 19) {
+            // Skip v62 channel overhead (meta, outer bounds, channel headers)
+            reader.skip(V62_OVERHEAD);
 
-          const width = right - left;
-          const height = bottom - top;
+            // Image data: bounds as Int32, depth, compression, pixels
+            const top = reader.readInt32();
+            const left = reader.readInt32();
+            const bottom = reader.readInt32();
+            const right = reader.readInt32();
+            const width = right - left;
+            const height = bottom - top;
 
-          if (width > 0 && height > 0 && width <= 5000 && height <= 5000) {
-            reader.skip(2); // unknown
-            const depth = reader.readUint16();
-            const compression = reader.readUint8();
+            if (width > 0 && height > 0 && width <= 5000 && height <= 5000) {
+              const depth = reader.readUint16();
+              const compression = reader.readUint8();
 
-            let pixels: Uint8Array;
-            if (compression === 0) {
-              pixels = readRawPixels(reader, width, height, depth);
-            } else {
-              pixels = readRlePixels(reader, width, height, depth);
+              if (depth === 8 || depth === 16) {
+                let pixels: Uint8Array;
+                if (compression === 0) {
+                  pixels = readRawPixels(reader, width, height, depth);
+                } else {
+                  pixels = readRlePixels(reader, width, height, depth);
+                }
+
+                brushes.push({
+                  name: `Brush ${brushIdx + 1}`,
+                  width,
+                  height,
+                  pixels,
+                  spacing: 0.25,
+                  diameter: Math.max(width, height),
+                });
+              }
             }
-
-            brushes.push({
-              name: `Brush ${i + 1}`,
-              width,
-              height,
-              pixels,
-              spacing: spacing > 0 ? spacing / 100 : 0.25,
-              diameter: Math.max(width, height),
-            });
           }
+          // else: computed/parametric brush or reference — skip
         } catch {
           // Skip malformed brush
         }
 
-        reader.seek(brushEnd);
+        // Seek to end of record + alignment padding
+        reader.seek(dataEnd);
+        const padding = (4 - (sampleLen % 4)) % 4;
+        reader.skip(padding);
+        brushIdx++;
       }
     }
 

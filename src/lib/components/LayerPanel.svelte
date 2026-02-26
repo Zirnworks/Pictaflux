@@ -228,12 +228,10 @@
 
 <style>
   .layer-panel {
-    width: 140px;
-    min-width: 140px;
     display: flex;
     flex-direction: column;
-    background: var(--bg-sidebar);
-    border-right: 1px solid var(--border);
+    flex: 1;
+    min-height: 0;
     user-select: none;
     overflow: hidden;
   }
