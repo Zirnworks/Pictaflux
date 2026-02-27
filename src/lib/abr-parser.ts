@@ -495,6 +495,8 @@ export function parseAbr(buffer: ArrayBuffer): AbrRawBrush[] {
   }
 }
 
+const MAX_TIP_SIZE = 1024;
+
 export async function rawBrushToTip(raw: AbrRawBrush): Promise<BrushTip> {
   const imageData = new ImageData(raw.width, raw.height);
   for (let i = 0; i < raw.width * raw.height; i++) {
@@ -504,7 +506,18 @@ export async function rawBrushToTip(raw: AbrRawBrush): Promise<BrushTip> {
     imageData.data[i * 4 + 3] = raw.pixels[i];
   }
 
-  const bitmap = await createImageBitmap(imageData);
+  // Downscale large bitmaps to save memory (brush stamps are max ~256px anyway)
+  const maxDim = Math.max(raw.width, raw.height);
+  let bitmap: ImageBitmap;
+  if (maxDim > MAX_TIP_SIZE) {
+    const scale = MAX_TIP_SIZE / maxDim;
+    const w = Math.round(raw.width * scale);
+    const h = Math.round(raw.height * scale);
+    bitmap = await createImageBitmap(imageData, { resizeWidth: w, resizeHeight: h });
+  } else {
+    bitmap = await createImageBitmap(imageData);
+  }
+
   return {
     name: raw.name,
     bitmap,
@@ -520,6 +533,10 @@ export async function loadAbrFile(
   const results: { tip: BrushTip; dynamics?: BrushDynamics; presetName?: string }[] = [];
 
   for (const raw of rawBrushes) {
+    // Skip separators and tiny placeholder brushes
+    if (raw.width < 4 || raw.height < 4) continue;
+    if (/^separator$/i.test(raw.name)) continue;
+
     const tip = await rawBrushToTip(raw);
     results.push({
       tip,

@@ -3,6 +3,9 @@ use tauri::Manager;
 mod commands;
 mod state;
 
+#[cfg(target_os = "macos")]
+mod tablet;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -14,6 +17,11 @@ pub fn run() {
             commands::stop_sidecar,
             commands::get_sidecar_status,
         ])
+        .setup(|app| {
+            #[cfg(target_os = "macos")]
+            tablet::start_tablet_monitor(app.handle().clone());
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let app_state = window.state::<state::AppState>();

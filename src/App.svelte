@@ -5,6 +5,7 @@
   import DrawingCanvas from "./lib/components/DrawingCanvas.svelte";
   import LayerPanel from "./lib/components/LayerPanel.svelte";
   import BrushLibrary from "./lib/components/BrushLibrary.svelte";
+  import BrushSettings from "./lib/components/BrushSettings.svelte";
   import PreviewPane from "./lib/components/PreviewPane.svelte";
   import { LayerManager } from "./lib/layers.svelte";
   import type { BrushPreset } from "./lib/types";
@@ -34,12 +35,38 @@
 
   function handleBrushSelect(preset: BrushPreset) {
     brushEngine?.setPreset(preset);
+    showBrushSettings = false;
   }
 
   // Derive active brush name for toolbar
   let activeBrushName = $derived(
     brushPresets.find((p) => p.id === activePresetId)?.name ?? "Soft Round",
   );
+
+  let showBrushSettings = $state(false);
+
+  let brushSettingsClosedAt = 0;
+
+  function handleToggleBrushSettings() {
+    // Prevent re-opening if just closed by click-outside (within same event loop)
+    if (!showBrushSettings && Date.now() - brushSettingsClosedAt < 100) return;
+    showBrushSettings = !showBrushSettings;
+  }
+
+  function handleCloseBrushSettings() {
+    showBrushSettings = false;
+    brushSettingsClosedAt = Date.now();
+  }
+
+  // When brush settings modal mutates the preset, sync to engine + presets array
+  function handlePresetChanged(updated: BrushPreset) {
+    const idx = brushPresets.findIndex((p) => p.id === updated.id);
+    if (idx >= 0) {
+      brushPresets[idx] = updated;
+      brushPresets = [...brushPresets];
+    }
+    brushEngine?.setPreset(updated);
+  }
 
   let brushSize = $state(8);
   let brushColor = $state("#ffffff");
@@ -255,7 +282,20 @@
     {diffusionState}
     onToggleDiffusion={handleToggleDiffusion}
     {activeBrushName}
+    onToggleBrushSettings={handleToggleBrushSettings}
   />
+  {#if showBrushSettings}
+    {@const activePreset = brushPresets.find((p) => p.id === activePresetId)}
+    {#if activePreset}
+      <div class="brush-settings-anchor">
+        <BrushSettings
+          preset={activePreset}
+          onchange={handlePresetChanged}
+          onclose={handleCloseBrushSettings}
+        />
+      </div>
+    {/if}
+  {/if}
   <div class="app-layout">
     <SplitPane>
       {#snippet left()}
@@ -293,6 +333,7 @@
     flex-direction: column;
     width: 100%;
     height: 100%;
+    position: relative;
   }
 
   .app-layout {
@@ -306,6 +347,13 @@
     display: flex;
     width: 100%;
     height: 100%;
+  }
+
+  .brush-settings-anchor {
+    position: absolute;
+    top: 84px;
+    left: 12px;
+    z-index: 200;
   }
 
   .side-panel {

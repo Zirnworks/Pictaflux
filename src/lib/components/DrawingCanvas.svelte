@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import type { LayerManager } from "../layers.svelte";
   import type { BrushEngine } from "../brush-engine";
 
@@ -24,6 +25,12 @@
   let containerEl: HTMLElement;
   let dpr = 1;
 
+  // Native tablet pressure from Rust NSEvent monitor (bypasses WKWebView limitation)
+  let nativeTablet = { pressure: -1, tiltX: 0, tiltY: 0, ts: 0 };
+
+  // Debug: show pen input state
+  let debugInfo = $state({ pressure: 0, pointerType: "", tiltX: 0, tiltY: 0, native: false });
+
   // Sync brush params to engine (read into locals — Svelte 5 gotcha)
   $effect(() => {
     const s = brushSize;
@@ -43,7 +50,22 @@
     const observer = new ResizeObserver(() => resizeCanvas());
     observer.observe(containerEl);
 
-    return () => observer.disconnect();
+    // Listen for native tablet pressure from Rust NSEvent monitor
+    let unlistenTablet: (() => void) | undefined;
+    listen<{ pressure: number; tilt_x: number; tilt_y: number }>(
+      "native-tablet",
+      (event) => {
+        nativeTablet.pressure = event.payload.pressure;
+        nativeTablet.tiltX = event.payload.tilt_x;
+        nativeTablet.tiltY = event.payload.tilt_y;
+        nativeTablet.ts = Date.now();
+      },
+    ).then((fn) => (unlistenTablet = fn));
+
+    return () => {
+      observer.disconnect();
+      unlistenTablet?.();
+    };
   });
 
   function resizeCanvas() {
@@ -96,8 +118,22 @@
     };
   }
 
-  function getPressure(e: PointerEvent): number {
-    return e.pressure > 0 ? e.pressure : 0.5;
+  function getPressure(e: PointerEvent): { pressure: number; tiltX: number; tiltY: number } {
+    // Use native NSEvent pressure if available (< 200ms old)
+    const useNative = nativeTablet.pressure >= 0 && Date.now() - nativeTablet.ts < 200;
+    if (useNative) {
+      return {
+        pressure: nativeTablet.pressure,
+        tiltX: nativeTablet.tiltX,
+        tiltY: nativeTablet.tiltY,
+      };
+    }
+    // Fallback to PointerEvent values
+    return {
+      pressure: e.pressure > 0 ? e.pressure : 0.5,
+      tiltX: e.tiltX ?? 0,
+      tiltY: e.tiltY ?? 0,
+    };
   }
 
   function onPointerDown(e: PointerEvent) {
@@ -115,18 +151,31 @@
     const layer = layerManager.activeLayer;
     if (!layer) return;
 
+    const pen = getPressure(e);
     brushEngine.beginStroke(
       layer.ctx,
       pos.x,
       pos.y,
-      getPressure(e),
-      e.tiltX ?? 0,
-      e.tiltY ?? 0,
+      pen.pressure,
+      pen.tiltX,
+      pen.tiltY,
     );
     compositeToDisplay();
   }
 
   function onPointerMove(e: PointerEvent) {
+    const pen = getPressure(e);
+    const useNative = nativeTablet.pressure >= 0 && Date.now() - nativeTablet.ts < 200;
+
+    // Debug: always update pen info
+    debugInfo = {
+      pressure: pen.pressure,
+      pointerType: e.pointerType,
+      tiltX: pen.tiltX,
+      tiltY: pen.tiltY,
+      native: useNative,
+    };
+
     if (eyedropping) {
       pickColor(e);
       return;
@@ -141,9 +190,9 @@
       layer.ctx,
       pos.x,
       pos.y,
-      getPressure(e),
-      e.tiltX ?? 0,
-      e.tiltY ?? 0,
+      pen.pressure,
+      pen.tiltX,
+      pen.tiltY,
     );
     compositeToDisplay();
   }
@@ -242,6 +291,9 @@
     oncontextmenu={onContextMenu}
     class:eyedropper={eyedropping}
   ></canvas>
+  <div class="debug-overlay">
+    {debugInfo.pointerType}{debugInfo.native ? " (native)" : ""} | pressure: {debugInfo.pressure.toFixed(3)} | tilt: {debugInfo.tiltX.toFixed(1)},{debugInfo.tiltY.toFixed(1)}
+  </div>
 </div>
 
 <style>
@@ -251,6 +303,7 @@
     height: 100%;
     overflow: hidden;
     background: var(--canvas-bg);
+    position: relative;
   }
 
   canvas {
@@ -261,5 +314,19 @@
 
   canvas.eyedropper {
     cursor: copy;
+  }
+
+  .debug-overlay {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #0f0;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 10;
   }
 </style>

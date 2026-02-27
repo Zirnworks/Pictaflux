@@ -17,6 +17,7 @@
     diffusionState = "disconnected",
     onToggleDiffusion,
     activeBrushName = "Soft Round",
+    onToggleBrushSettings,
   }: {
     brushSize: number;
     brushColor: string;
@@ -35,6 +36,7 @@
     diffusionState: string;
     onToggleDiffusion?: () => void;
     activeBrushName: string;
+    onToggleBrushSettings?: () => void;
   } = $props();
 
   function randomizeSeed() {
@@ -46,7 +48,9 @@
   <div class="toolbar">
     <div class="tool-group">
       <span class="tool-label">Brush</span>
-      <span class="brush-name">{activeBrushName}</span>
+      <button class="brush-name-btn" onclick={onToggleBrushSettings} title="Brush settings">
+        {activeBrushName}
+      </button>
       <div class="tool-control">
         <label title="Brush diameter in pixels">Size
           <input type="range" min="1" max="256" step="1" bind:value={brushSize} />
@@ -300,13 +304,25 @@
     font-family: monospace;
   }
 
-  .brush-name {
+  .brush-name-btn {
     font-size: 11px;
     color: var(--text-secondary);
-    max-width: 80px;
+    max-width: 100px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 2px 6px;
+    min-width: unset;
+    cursor: pointer;
+  }
+
+  .brush-name-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border);
+    background: var(--bg-control);
   }
 
   .separator {

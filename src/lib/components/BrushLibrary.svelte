@@ -47,8 +47,13 @@
     const currentPresets = presets;
     for (const p of currentPresets) {
       if (!thumbnails.has(p.id)) {
-        thumbnails.set(p.id, tipToThumbnail(p.tip));
-        thumbnails = new Map(thumbnails);
+        try {
+          const thumb = tipToThumbnail(p.tip);
+          thumbnails.set(p.id, thumb);
+          thumbnails = new Map(thumbnails);
+        } catch (err) {
+          console.error(`[ABR] Thumbnail failed for "${p.name}" (${p.tip.bitmap.width}x${p.tip.bitmap.height}):`, err);
+        }
       }
     }
   });
@@ -60,7 +65,15 @@
 
     try {
       const buffer = await file.arrayBuffer();
+      console.log(`[ABR] Loading ${file.name} (${buffer.byteLength} bytes)`);
       const results = await loadAbrFile(buffer);
+      console.log(`[ABR] Parsed ${results.length} brushes:`, results.map(r => ({
+        name: r.tip.name,
+        presetName: r.presetName,
+        w: r.tip.bitmap.width,
+        h: r.tip.bitmap.height,
+        hasDynamics: !!r.dynamics,
+      })));
 
       const baseName = file.name.replace(/\.abr$/i, "");
       const newPresets: BrushPreset[] = results.map((r, i) => ({
