@@ -15,48 +15,33 @@
 
   let fileInput: HTMLInputElement;
 
+  // Reusable canvas for thumbnail generation — WebKit limits active canvas contexts
+  // to ~64-128, so creating one per brush exhausts the pool permanently
+  const thumbCanvas = document.createElement("canvas");
+  thumbCanvas.width = 48;
+  thumbCanvas.height = 48;
+  const thumbCtx = thumbCanvas.getContext("2d")!;
+
   // Generate a 48x48 thumbnail data URL from a BrushTip
   function tipToThumbnail(tip: BrushTip): string {
     const size = 48;
-    const canvas = new OffscreenCanvas(size, size);
-    const ctx = canvas.getContext("2d")!;
 
-    // Dark background so white-alpha tip is visible
-    ctx.fillStyle = "#2a2a2a";
-    ctx.fillRect(0, 0, size, size);
+    // Clear and draw dark background
+    thumbCtx.clearRect(0, 0, size, size);
+    thumbCtx.fillStyle = "#2a2a2a";
+    thumbCtx.fillRect(0, 0, size, size);
 
     // Draw tip centered, scaled to fit
     const scale = (size - 4) / Math.max(tip.bitmap.width, tip.bitmap.height);
     const w = tip.bitmap.width * scale;
     const h = tip.bitmap.height * scale;
-    ctx.drawImage(tip.bitmap, (size - w) / 2, (size - h) / 2, w, h);
+    thumbCtx.drawImage(tip.bitmap, (size - w) / 2, (size - h) / 2, w, h);
 
-    // OffscreenCanvas can't do toDataURL — draw to a regular canvas
-    const out = document.createElement("canvas");
-    out.width = size;
-    out.height = size;
-    const octx = out.getContext("2d")!;
-    octx.drawImage(canvas, 0, 0);
-    return out.toDataURL("image/png");
+    return thumbCanvas.toDataURL("image/png");
   }
 
-  // Cache thumbnails keyed by preset id
-  let thumbnails: Map<string, string> = $state(new Map());
-
-  $effect(() => {
-    const currentPresets = presets;
-    for (const p of currentPresets) {
-      if (!thumbnails.has(p.id)) {
-        try {
-          const thumb = tipToThumbnail(p.tip);
-          thumbnails.set(p.id, thumb);
-          thumbnails = new Map(thumbnails);
-        } catch (err) {
-          console.error(`[ABR] Thumbnail failed for "${p.name}" (${p.tip.bitmap.width}x${p.tip.bitmap.height}):`, err);
-        }
-      }
-    }
-  });
+  // Cache thumbnails — plain object, not Map (Svelte 5 proxies objects reliably)
+  let thumbnails: Record<string, string> = $state({});
 
   async function handleImport(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -67,23 +52,39 @@
       const buffer = await file.arrayBuffer();
       console.log(`[ABR] Loading ${file.name} (${buffer.byteLength} bytes)`);
       const results = await loadAbrFile(buffer);
-      console.log(`[ABR] Parsed ${results.length} brushes:`, results.map(r => ({
-        name: r.tip.name,
-        presetName: r.presetName,
-        w: r.tip.bitmap.width,
-        h: r.tip.bitmap.height,
-        hasDynamics: !!r.dynamics,
-      })));
+      console.log(`[ABR] Parsed ${results.length} brushes`);
 
       const baseName = file.name.replace(/\.abr$/i, "");
-      const newPresets: BrushPreset[] = results.map((r, i) => ({
-        id: `abr-${baseName}-${i}-${Date.now()}`,
-        name: r.presetName ?? (r.tip.name !== `Brush ${i + 1}` ? r.tip.name : `${baseName} ${i + 1}`),
-        tip: r.tip,
-        dynamics: r.dynamics ?? defaultDynamics(),
-      }));
+      const newPresets: BrushPreset[] = [];
 
+      // Generate thumbnails EAGERLY during import, before setting presets
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        const id = `abr-${baseName}-${i}-${Date.now()}`;
+        const preset: BrushPreset = {
+          id,
+          name: r.presetName ?? (r.tip.name !== `Brush ${i + 1}` ? r.tip.name : `${baseName} ${i + 1}`),
+          tip: r.tip,
+          dynamics: r.dynamics ?? defaultDynamics(),
+        };
+        newPresets.push(preset);
+
+        // Generate thumbnail right now while bitmap is guaranteed alive
+        try {
+          const thumb = tipToThumbnail(r.tip);
+          thumbnails[id] = thumb;
+          console.log(`[ABR] Thumb ${i + 1}/${results.length}: ${preset.name} → ${thumb.length} chars`);
+        } catch (err) {
+          console.error(`[ABR] Thumb FAILED ${i + 1}/${results.length}: ${preset.name}`, err);
+        }
+      }
+
+      console.log(`[ABR] Thumbnails generated: ${Object.keys(thumbnails).length} total in cache`);
+
+      // Set presets AFTER thumbnails are ready
       presets = [...presets, ...newPresets];
+
+      console.log(`[ABR] Presets set: ${presets.length} total`);
     } catch (err) {
       console.error("Failed to load ABR file:", err);
     }
@@ -91,6 +92,19 @@
     // Reset input so the same file can be re-imported
     input.value = "";
   }
+
+  // Also generate thumbnails for any presets that don't have one (e.g. default preset)
+  $effect(() => {
+    for (const p of presets) {
+      if (!thumbnails[p.id]) {
+        try {
+          thumbnails[p.id] = tipToThumbnail(p.tip);
+        } catch {
+          // Skip — will retry on next effect run
+        }
+      }
+    }
+  });
 
   function selectPreset(preset: BrushPreset) {
     activePresetId = preset.id;
@@ -124,8 +138,8 @@
         onclick={() => selectPreset(preset)}
         title={preset.name}
       >
-        {#if thumbnails.get(preset.id)}
-          <img src={thumbnails.get(preset.id)} alt={preset.name} draggable="false" />
+        {#if thumbnails[preset.id]}
+          <img src={thumbnails[preset.id]} alt={preset.name} draggable="false" />
         {/if}
       </button>
     {/each}
