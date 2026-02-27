@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { BrushPreset, BrushTip } from "../types";
   import { loadAbrFile } from "../abr-parser";
-  import { createDefaultPreset } from "../brush-engine";
+  import { defaultDynamics } from "../brush-engine";
 
   let {
     presets = $bindable([]),
@@ -60,20 +60,14 @@
 
     try {
       const buffer = await file.arrayBuffer();
-      const tips = await loadAbrFile(buffer);
+      const results = await loadAbrFile(buffer);
 
       const baseName = file.name.replace(/\.abr$/i, "");
-      const newPresets: BrushPreset[] = tips.map((tip, i) => ({
+      const newPresets: BrushPreset[] = results.map((r, i) => ({
         id: `abr-${baseName}-${i}-${Date.now()}`,
-        name: tip.name !== `Brush ${i + 1}` ? tip.name : `${baseName} ${i + 1}`,
-        tip,
-        dynamics: {
-          pressureSize: true,
-          pressureOpacity: true,
-          tiltAngle: false,
-          sizeJitter: 0,
-          angleJitter: 0,
-        },
+        name: r.presetName ?? (r.tip.name !== `Brush ${i + 1}` ? r.tip.name : `${baseName} ${i + 1}`),
+        tip: r.tip,
+        dynamics: r.dynamics ?? defaultDynamics(),
       }));
 
       presets = [...presets, ...newPresets];

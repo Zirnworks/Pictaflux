@@ -13,12 +13,44 @@ export interface BrushTip {
   spacing: number;
 }
 
+// Control source for a dynamics parameter
+export type DynamicsControl =
+  | "off"
+  | "pressure"
+  | "tilt"
+  | "direction"
+  | "fade";
+
+export interface DynamicsController {
+  control: DynamicsControl;
+  jitter: number; // 0-1
+  minimum: number; // 0-1 (floor value when controlled)
+  fadeSteps: number; // steps for fade mode
+}
+
 export interface BrushDynamics {
-  pressureSize: boolean;
-  pressureOpacity: boolean;
-  tiltAngle: boolean;
-  sizeJitter: number;
-  angleJitter: number;
+  // Shape dynamics
+  size: DynamicsController;
+  angle: DynamicsController;
+  roundness: DynamicsController;
+
+  // Scatter
+  scatterEnabled: boolean;
+  scatter: DynamicsController;
+  scatterCount: number; // stamps per placement
+  scatterBothAxes: boolean;
+
+  // Transfer
+  opacity: DynamicsController;
+  flow: DynamicsController;
+
+  // Tip properties (from ABR Brsh object or manual settings)
+  spacing: number; // 0-10 (fraction of diameter)
+  tipAngle: number; // radians
+  tipRoundness: number; // 0-1
+  flipX: boolean;
+  flipY: boolean;
+  hardness: number; // 0-1 (computedBrush)
 }
 
 export interface BrushPreset {
