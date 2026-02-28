@@ -246,6 +246,13 @@ export class LayerManager {
     layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
   }
 
+  fillActiveLayer(color: string) {
+    const layer = this.activeLayer;
+    if (!layer) return;
+    layer.ctx.fillStyle = color;
+    layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
+  }
+
   updateActiveLayerThumbnail() {
     this.activeLayer?.updateThumbnail();
   }

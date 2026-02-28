@@ -219,6 +219,11 @@
     compositeToDisplay();
   }
 
+  export function fill(color: string) {
+    layerManager.fillActiveLayer(color);
+    compositeToDisplay();
+  }
+
   export function getImageData(): ImageData | null {
     if (!displayCtx) return null;
     return displayCtx.getImageData(0, 0, canvasEl.width, canvasEl.height);

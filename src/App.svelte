@@ -263,6 +263,9 @@
       brushSize = Math.min(500, brushSize + (brushSize < 10 ? 1 : brushSize < 50 ? 5 : 10));
     } else if (e.key === "[") {
       brushSize = Math.max(1, brushSize - (brushSize <= 10 ? 1 : brushSize <= 50 ? 5 : 10));
+    } else if (e.key === "Backspace" && e.altKey) {
+      e.preventDefault();
+      drawingCanvas?.fill(brushColor);
     }
   }
 
