@@ -58,6 +58,7 @@ export interface BrushPreset {
   name: string;
   tip: BrushTip;
   dynamics: BrushDynamics;
+  thumbnail?: string;
 }
 
 export interface DiffusionRequest {

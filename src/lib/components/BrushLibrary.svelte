@@ -40,9 +40,6 @@
     return thumbCanvas.toDataURL("image/png");
   }
 
-  // Cache thumbnails — plain object, not Map (Svelte 5 proxies objects reliably)
-  let thumbnails: Record<string, string> = $state({});
-
   async function handleImport(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -50,41 +47,34 @@
 
     try {
       const buffer = await file.arrayBuffer();
-      console.log(`[ABR] Loading ${file.name} (${buffer.byteLength} bytes)`);
       const results = await loadAbrFile(buffer);
-      console.log(`[ABR] Parsed ${results.length} brushes`);
 
       const baseName = file.name.replace(/\.abr$/i, "");
+      const importStamp = Date.now();
       const newPresets: BrushPreset[] = [];
 
       // Generate thumbnails EAGERLY during import, before setting presets
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
-        const id = `abr-${baseName}-${i}-${Date.now()}`;
+        const id = `abr-${baseName}-${i}-${importStamp}`;
         const preset: BrushPreset = {
           id,
           name: r.presetName ?? (r.tip.name !== `Brush ${i + 1}` ? r.tip.name : `${baseName} ${i + 1}`),
           tip: r.tip,
           dynamics: r.dynamics ?? defaultDynamics(),
         };
-        newPresets.push(preset);
 
         // Generate thumbnail right now while bitmap is guaranteed alive
         try {
-          const thumb = tipToThumbnail(r.tip);
-          thumbnails[id] = thumb;
-          console.log(`[ABR] Thumb ${i + 1}/${results.length}: ${preset.name} → ${thumb.length} chars`);
-        } catch (err) {
-          console.error(`[ABR] Thumb FAILED ${i + 1}/${results.length}: ${preset.name}`, err);
+          preset.thumbnail = tipToThumbnail(r.tip);
+        } catch {
+          // Thumbnail generation failed — cell will be blank
         }
+
+        newPresets.push(preset);
       }
 
-      console.log(`[ABR] Thumbnails generated: ${Object.keys(thumbnails).length} total in cache`);
-
-      // Set presets AFTER thumbnails are ready
       presets = [...presets, ...newPresets];
-
-      console.log(`[ABR] Presets set: ${presets.length} total`);
     } catch (err) {
       console.error("Failed to load ABR file:", err);
     }
@@ -95,14 +85,21 @@
 
   // Also generate thumbnails for any presets that don't have one (e.g. default preset)
   $effect(() => {
-    for (const p of presets) {
-      if (!thumbnails[p.id]) {
-        try {
-          thumbnails[p.id] = tipToThumbnail(p.tip);
-        } catch {
-          // Skip — will retry on next effect run
-        }
+    let changed = false;
+    const updatedPresets = presets.map((p) => {
+      if (p.thumbnail) return p;
+
+      try {
+        changed = true;
+        return { ...p, thumbnail: tipToThumbnail(p.tip) };
+      } catch {
+        // Skip — will retry on next effect run
+        return p;
       }
+    });
+
+    if (changed) {
+      presets = updatedPresets;
     }
   });
 
@@ -110,6 +107,7 @@
     activePresetId = preset.id;
     onselect?.(preset);
   }
+
 </script>
 
 <div class="brush-library">
@@ -138,8 +136,8 @@
         onclick={() => selectPreset(preset)}
         title={preset.name}
       >
-        {#if thumbnails[preset.id]}
-          <img src={thumbnails[preset.id]} alt={preset.name} draggable="false" />
+        {#if preset.thumbnail}
+          <img src={preset.thumbnail} alt={preset.name} draggable="false" />
         {/if}
       </button>
     {/each}
@@ -183,16 +181,20 @@
 
   .brush-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: 40px;
     gap: 2px;
     padding: 4px;
     overflow-y: auto;
+    align-content: start;
   }
 
   .brush-thumb {
-    aspect-ratio: 1;
+    width: 100%;
+    height: 100%;
     padding: 0;
     min-width: unset;
+    min-height: 0;
     border: 2px solid transparent;
     border-radius: 4px;
     background: var(--bg-control);

@@ -28,9 +28,6 @@
   // Native tablet pressure from Rust NSEvent monitor (bypasses WKWebView limitation)
   let nativeTablet = { pressure: -1, tiltX: 0, tiltY: 0, ts: 0 };
 
-  // Debug: show pen input state
-  let debugInfo = $state({ pressure: 0, pointerType: "", tiltX: 0, tiltY: 0, native: false });
-
   // Sync brush params to engine (read into locals — Svelte 5 gotcha)
   $effect(() => {
     const s = brushSize;
@@ -165,16 +162,6 @@
 
   function onPointerMove(e: PointerEvent) {
     const pen = getPressure(e);
-    const useNative = nativeTablet.pressure >= 0 && Date.now() - nativeTablet.ts < 200;
-
-    // Debug: always update pen info
-    debugInfo = {
-      pressure: pen.pressure,
-      pointerType: e.pointerType,
-      tiltX: pen.tiltX,
-      tiltY: pen.tiltY,
-      native: useNative,
-    };
 
     if (eyedropping) {
       pickColor(e);
@@ -291,9 +278,6 @@
     oncontextmenu={onContextMenu}
     class:eyedropper={eyedropping}
   ></canvas>
-  <div class="debug-overlay">
-    {debugInfo.pointerType}{debugInfo.native ? " (native)" : ""} | pressure: {debugInfo.pressure.toFixed(3)} | tilt: {debugInfo.tiltX.toFixed(1)},{debugInfo.tiltY.toFixed(1)}
-  </div>
 </div>
 
 <style>
@@ -316,17 +300,4 @@
     cursor: copy;
   }
 
-  .debug-overlay {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    background: rgba(0, 0, 0, 0.7);
-    color: #0f0;
-    font-family: monospace;
-    font-size: 11px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    pointer-events: none;
-    z-index: 10;
-  }
 </style>
