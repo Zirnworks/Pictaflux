@@ -74,7 +74,7 @@
         newPresets.push(preset);
       }
 
-      presets = [...presets, ...newPresets];
+      presets = newPresets;
     } catch (err) {
       console.error("Failed to load ABR file:", err);
     }

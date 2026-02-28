@@ -76,7 +76,7 @@
   let feedback = $state(0.1);
   let lerpSpeed = $state(0.05);
   let seed = $state(42);
-  let model = $state("sdxs");
+  let model = $state("turbo");
   let renderSize = $state(512);
   let cfgScale = $state(1.0);
   let negativePrompt = $state("");
@@ -257,12 +257,22 @@
     prevRenderSize = rs;
   });
 
+  // Bracket keys resize brush (Photoshop-style)
+  function handleKeyDown(e: KeyboardEvent) {
+    if (e.key === "]") {
+      brushSize = Math.min(500, brushSize + (brushSize < 10 ? 1 : brushSize < 50 ? 5 : 10));
+    } else if (e.key === "[") {
+      brushSize = Math.max(1, brushSize - (brushSize <= 10 ? 1 : brushSize <= 50 ? 5 : 10));
+    }
+  }
+
   onDestroy(() => {
     bridge?.disconnect();
     layerManager.dispose();
   });
 </script>
 
+<svelte:window onkeydown={handleKeyDown} />
 <div class="app-root">
   <Toolbar
     bind:brushSize

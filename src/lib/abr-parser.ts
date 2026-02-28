@@ -538,6 +538,15 @@ export async function loadAbrFile(
     if (/^separator$/i.test(raw.name)) continue;
 
     const tip = await rawBrushToTip(raw);
+
+    // Diagnostic: log per-brush dynamics
+    if (raw.dynamics) {
+      const d = raw.dynamics;
+      console.log(`[ABR] "${raw.name}" dynamics: spacing=${d.spacing.toFixed(3)}, size=${d.size.control}(min=${d.size.minimum.toFixed(2)},jit=${d.size.jitter.toFixed(2)}), opacity=${d.opacity.control}, scatter=${d.scatterEnabled}, angle=${d.angle.control}(jit=${d.angle.jitter.toFixed(2)})`);
+    } else {
+      console.log(`[ABR] "${raw.name}" → NO dynamics (UUID match failed)`);
+    }
+
     results.push({
       tip,
       dynamics: raw.dynamics,
