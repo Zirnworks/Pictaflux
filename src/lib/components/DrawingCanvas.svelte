@@ -95,10 +95,8 @@
     layerManager.compositeToContext(displayCtx);
   }
 
-  // Recomposite when layer properties or background changes
+  // Recomposite when layer properties change
   $effect(() => {
-    layerManager.bgColor;
-    layerManager.bgVisible;
     for (const l of layerManager.layers) {
       l.visible;
       l.opacity;
@@ -148,6 +146,7 @@
     const layer = layerManager.activeLayer;
     if (!layer) return;
 
+    layerManager.saveSnapshot();
     const pen = getPressure(e);
     brushEngine.beginStroke(
       layer.ctx,
@@ -215,13 +214,24 @@
   }
 
   export function clear() {
+    layerManager.saveSnapshot();
     layerManager.clearActiveLayer();
     compositeToDisplay();
   }
 
   export function fill(color: string) {
+    layerManager.saveSnapshot();
     layerManager.fillActiveLayer(color);
+    layerManager.updateActiveLayerThumbnail();
     compositeToDisplay();
+  }
+
+  export function undo() {
+    if (layerManager.undo()) compositeToDisplay();
+  }
+
+  export function redo() {
+    if (layerManager.redo()) compositeToDisplay();
   }
 
   export function getImageData(): ImageData | null {

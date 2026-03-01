@@ -170,3 +170,8 @@ pub fn get_sidecar_status(state: State<'_, AppState>) -> Result<SidecarStatusRes
         port: sidecar.port,
     })
 }
+
+#[tauri::command]
+pub fn save_bytes_to_file(path: String, data: Vec<u8>) -> Result<(), String> {
+    std::fs::write(&path, &data).map_err(|e| e.to_string())
+}

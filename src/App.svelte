@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, untrack } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import Toolbar from "./lib/components/Toolbar.svelte";
   import SplitPane from "./lib/components/SplitPane.svelte";
   import DrawingCanvas from "./lib/components/DrawingCanvas.svelte";
@@ -16,6 +16,10 @@
   } from "./lib/brush-engine";
   import { DiffusionBridge } from "./lib/diffusion";
   import { startSidecar, stopSidecar } from "./lib/tauri";
+  import { buildPsd } from "./lib/psd-export";
+  import { save } from "@tauri-apps/plugin-dialog";
+  import { invoke } from "@tauri-apps/api/core";
+  import { Menu, Submenu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 
   const layerManager = new LayerManager();
 
@@ -257,6 +261,37 @@
     prevRenderSize = rs;
   });
 
+  // --- Save / Save As ---
+  let currentSavePath: string | null = $state(null);
+
+  async function handleSaveAs() {
+    const path = await save({
+      defaultPath: "untitled.psd",
+      filters: [{ name: "Photoshop", extensions: ["psd"] }],
+    });
+    if (!path) return;
+    currentSavePath = path;
+    await writePsdToFile(path);
+  }
+
+  async function handleSave() {
+    if (currentSavePath) {
+      await writePsdToFile(currentSavePath);
+    } else {
+      await handleSaveAs();
+    }
+  }
+
+  async function writePsdToFile(path: string) {
+    try {
+      const data = buildPsd(layerManager);
+      await invoke("save_bytes_to_file", { path, data: Array.from(data) });
+      console.log(`[Save] Written ${(data.byteLength / 1024).toFixed(0)} KB → ${path}`);
+    } catch (e) {
+      console.error("[Save] Failed:", e);
+    }
+  }
+
   // Bracket keys resize brush (Photoshop-style)
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === "]") {
@@ -266,8 +301,79 @@
     } else if (e.key === "Backspace" && e.altKey) {
       e.preventDefault();
       drawingCanvas?.fill(brushColor);
+    } else if (e.key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+      e.preventDefault();
+      drawingCanvas?.undo();
+    } else if (
+      ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") ||
+      ((e.metaKey || e.ctrlKey) && e.key === "y")
+    ) {
+      e.preventDefault();
+      drawingCanvas?.redo();
     }
   }
+
+  // --- Native menu bar ---
+  onMount(async () => {
+    const appMenu = await Submenu.new({
+      text: "Pictaflux",
+      items: [
+        await PredefinedMenuItem.new({ item: { About: { name: "Pictaflux" } } }),
+        await PredefinedMenuItem.new({ item: "Separator" }),
+        await PredefinedMenuItem.new({ item: "Services" }),
+        await PredefinedMenuItem.new({ item: "Separator" }),
+        await PredefinedMenuItem.new({ item: "Hide" }),
+        await PredefinedMenuItem.new({ item: "HideOthers" }),
+        await PredefinedMenuItem.new({ item: "ShowAll" }),
+        await PredefinedMenuItem.new({ item: "Separator" }),
+        await PredefinedMenuItem.new({ item: "Quit" }),
+      ],
+    });
+
+    const fileMenu = await Submenu.new({
+      text: "File",
+      items: [
+        await MenuItem.new({
+          text: "Save",
+          accelerator: "CmdOrCtrl+S",
+          action: () => handleSave(),
+        }),
+        await MenuItem.new({
+          text: "Save As...",
+          accelerator: "CmdOrCtrl+Shift+S",
+          action: () => handleSaveAs(),
+        }),
+      ],
+    });
+
+    const editMenu = await Submenu.new({
+      text: "Edit",
+      items: [
+        await PredefinedMenuItem.new({ item: "Undo" }),
+        await PredefinedMenuItem.new({ item: "Redo" }),
+        await PredefinedMenuItem.new({ item: "Separator" }),
+        await PredefinedMenuItem.new({ item: "Cut" }),
+        await PredefinedMenuItem.new({ item: "Copy" }),
+        await PredefinedMenuItem.new({ item: "Paste" }),
+        await PredefinedMenuItem.new({ item: "SelectAll" }),
+      ],
+    });
+
+    const windowMenu = await Submenu.new({
+      text: "Window",
+      items: [
+        await PredefinedMenuItem.new({ item: "Minimize" }),
+        await PredefinedMenuItem.new({ item: "Maximize" }),
+        await PredefinedMenuItem.new({ item: "Separator" }),
+        await PredefinedMenuItem.new({ item: "CloseWindow" }),
+      ],
+    });
+
+    const menu = await Menu.new({
+      items: [appMenu, fileMenu, editMenu, windowMenu],
+    });
+    await menu.setAsAppMenu();
+  });
 
   onDestroy(() => {
     bridge?.disconnect();

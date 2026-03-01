@@ -11,11 +11,13 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::process_canvas,
             commands::start_sidecar,
             commands::stop_sidecar,
             commands::get_sidecar_status,
+            commands::save_bytes_to_file,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

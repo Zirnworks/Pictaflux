@@ -63,11 +63,17 @@ export class Layer {
   }
 }
 
+interface Snapshot {
+  layerId: number;
+  imageData: ImageData;
+}
+
 export class LayerManager {
   layers: Layer[] = $state([]);
   activeLayerId = $state(0);
-  bgColor = $state("#1e1e1e");
-  bgVisible = $state(true);
+  private undoStack: Snapshot[] = [];
+  private redoStack: Snapshot[] = [];
+  private readonly MAX_UNDO = 50;
 
   get activeLayer(): Layer | undefined {
     return this.layers.find((l) => l.id === this.activeLayerId);
@@ -76,10 +82,14 @@ export class LayerManager {
   init(physW: number, physH: number) {
     for (const l of this.layers) l.dispose();
 
-    const bg = new Layer("Layer 1", physW, physH);
+    const bg = new Layer("Background", physW, physH);
+    bg.ctx.fillStyle = "#1e1e1e";
+    bg.ctx.fillRect(0, 0, physW, physH);
 
-    this.layers = [bg];
-    this.activeLayerId = bg.id;
+    const layer1 = new Layer("Layer 1", physW, physH);
+
+    this.layers = [bg, layer1];
+    this.activeLayerId = layer1.id;
   }
 
   addLayer(name?: string) {
@@ -216,13 +226,6 @@ export class LayerManager {
     const h = target.canvas.height;
     target.clearRect(0, 0, w, h);
 
-    if (this.bgVisible) {
-      target.globalAlpha = 1.0;
-      target.globalCompositeOperation = "source-over";
-      target.fillStyle = this.bgColor;
-      target.fillRect(0, 0, w, h);
-    }
-
     for (const layer of this.layers) {
       if (!layer.visible) continue;
       target.globalAlpha = layer.opacity;
@@ -251,6 +254,37 @@ export class LayerManager {
     if (!layer) return;
     layer.ctx.fillStyle = color;
     layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
+  }
+
+  saveSnapshot() {
+    const layer = this.activeLayer;
+    if (!layer) return;
+    const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+    this.undoStack.push({ layerId: layer.id, imageData });
+    if (this.undoStack.length > this.MAX_UNDO) this.undoStack.shift();
+    this.redoStack = [];
+  }
+
+  undo(): boolean {
+    const snap = this.undoStack.pop();
+    if (!snap) return false;
+    const layer = this.layers.find((l) => l.id === snap.layerId);
+    if (!layer) return false;
+    const current = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+    this.redoStack.push({ layerId: snap.layerId, imageData: current });
+    layer.ctx.putImageData(snap.imageData, 0, 0);
+    return true;
+  }
+
+  redo(): boolean {
+    const snap = this.redoStack.pop();
+    if (!snap) return false;
+    const layer = this.layers.find((l) => l.id === snap.layerId);
+    if (!layer) return false;
+    const current = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+    this.undoStack.push({ layerId: snap.layerId, imageData: current });
+    layer.ctx.putImageData(snap.imageData, 0, 0);
+    return true;
   }
 
   updateActiveLayerThumbnail() {
